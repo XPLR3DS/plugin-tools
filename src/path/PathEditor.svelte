@@ -26,7 +26,13 @@
   /** Needed for the <mask> element **/
   const MIDPOINT_SIZE = 4.5;
 
-  /** Props */
+  /** Props
+   * Shared editor for ShapeType.POLYLINE — used by both the native 'path' tool
+   * and the 'distance' tool (registerShapeEditor is one-per-ShapeType, and a
+   * distance measurement is just a 2-point Polyline; the measurement label
+   * itself is drawn by the supplementary overlay layer based on
+   * `shape.properties?.toolType === 'distance'`).
+   */
   export let shape: Polyline;
   export let computedStyle: string | undefined;
   export let transform: Transform;

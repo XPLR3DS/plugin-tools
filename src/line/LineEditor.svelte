@@ -3,6 +3,10 @@
   import { boundsFromPoints } from '@annotorious/annotorious';
   import type { Line, LineGeometry, Shape, Transform } from '@annotorious/annotorious';
 
+  // Shared editor for ShapeType.LINE — used by both the native 'line' tool and
+  // the 'arrow' tool (registerShapeEditor is one-per-ShapeType, and an arrow's
+  // geometry is just a Line; the arrowhead itself is drawn by the supplementary
+  // overlay layer based on `shape.properties?.toolType === 'arrow'`).
   export let shape: Line;
   export let computedStyle: string | undefined;
   export let transform: Transform;
