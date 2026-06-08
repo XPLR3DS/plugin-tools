@@ -31,15 +31,11 @@
       "import": "./dist/annotorious-plugin-tools.es.js",
       "require": "./dist/annotorious-plugin-tools.js"
     },
-    "./react": {
-      "import": "./dist/annotorious-plugin-tools-react.es.js"
-    },
     "./annotorious-plugin-tools.css": "./dist/annotorious-plugin-tools.css"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.2",
     "@tsconfig/svelte": "^5.0.5",
-    "@vitejs/plugin-react": "^4.7.0",
     "openseadragon": "^5.0.1",
     "svelte": "^4.2.20",
     "svelte-preprocess": "^6.0.3",
@@ -49,8 +45,6 @@
   },
   "peerDependencies": {
     "@annotorious/annotorious": "^3.7.2",
-    "@annotorious/openseadragon": "^3.7.2",
-    "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
+    "@annotorious/openseadragon": "^3.7.2"
   }
 }
