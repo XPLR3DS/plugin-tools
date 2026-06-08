@@ -184,7 +184,7 @@
       if (i !== idx) return point;
 
       const newPt = { ...point, locked: true };
-      
+
       const handle = pt.inHandle || pt.outHandle;
       if (!handle) return point;
 
