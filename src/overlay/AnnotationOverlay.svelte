@@ -220,7 +220,7 @@
   const arrowheadPoints = (points: [number, number][]) => {
     const [[x1, y1], [x2, y2]] = points;
     const angle = Math.atan2(y2 - y1, x2 - x1);
-    const headLength = 12;
+    const headLength = 12 / viewportScale;
     const hx1 = x2 - headLength * Math.cos(angle - Math.PI / 6);
     const hy1 = y2 - headLength * Math.sin(angle - Math.PI / 6);
     const hx2 = x2 - headLength * Math.cos(angle + Math.PI / 6);
@@ -260,9 +260,10 @@
         {:else if toolType === 'distance'}
           {@const points = polylineGeometry(selector)}
           {@const center = midpoint(points)}
+          {@const s = 1 / viewportScale}
           <g class="a9s-tools-distance-label" transform={`translate(${center[0]}, ${center[1]})`}>
-            <rect x="-32" y="-24" width="64" height="18" rx="3" />
-            <text x="0" y="-11" text-anchor="middle">{formatLength(points)}</text>
+            <rect x={-32 * s} y={-24 * s} width={64 * s} height={18 * s} rx={3 * s} />
+            <text x="0" y={-11 * s} font-size={11 * s} text-anchor="middle">{formatLength(points)}</text>
           </g>
         {/if}
       {/if}
@@ -368,7 +369,7 @@
   }
 
   .a9s-tools-distance-label rect { fill: rgba(0,0,0,0.65); }
-  .a9s-tools-distance-label text { fill: #fff; font-size: 11px; font-family: sans-serif; }
+  .a9s-tools-distance-label text { fill: #fff; font-family: sans-serif; }
 
   .a9s-tools-text-input {
     position: absolute;
