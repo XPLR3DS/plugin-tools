@@ -25,13 +25,6 @@ export default defineConfig({
         format === 'umd' ? `annotorious-plugin-tools.js` : `annotorious-plugin-tools.es.js` 
     },
     rollupOptions: {
-      external: [
-        '@annotorious/annotorious',
-        '@annotorious/core',
-        '@annotorious/openseadragon',
-        'svelte',
-        /^svelte\//,
-      ],
       output: {
         assetFileNames: 'annotorious-plugin-tools.[ext]'
       }
