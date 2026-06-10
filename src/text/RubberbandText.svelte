@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { ShapeType } from '@annotorious/annotorious';
   import type { Rectangle, DrawingMode, Transform } from '@annotorious/annotorious';
+  import { DEFAULT_TEXT_STYLE } from './textStyle';
 
   const dispatch = createEventDispatcher<{ create: Rectangle }>();
 
@@ -19,19 +20,21 @@
   const onPointerUp = (event: Event) => {
     const evt = event as PointerEvent;
     const elapsed = performance.now() - lastPointerDown;
-
-    // Only respond to quick clicks — ignore long presses or accidental drags
     if (elapsed > 400) return;
 
     const [x, y] = transform.elementToImage(evt.offsetX, evt.offsetY);
 
-    // Dispatch a 1×1 rectangle at the click point; the overlay renders the
-    // actual text using the x,y coordinates as the text baseline-left origin.
+    // geometry.x / geometry.y = text baseline-left (same convention as old TextTool).
+    // textPoint() in the overlay reads g.x / g.y directly — no offset needed here.
+    const fsImage = DEFAULT_TEXT_STYLE.fontSize / Math.max(viewportScale, 0.01);
+    const initW   = fsImage * 20;
+    const initH   = fsImage * 1.2;
+
     const shape = {
       type: ShapeType.RECTANGLE,
       geometry: {
-        bounds: { minX: x, minY: y - 1, maxX: x + 1, maxY: y },
-        x, y: y - 1, w: 1, h: 1,
+        bounds: { minX: x, minY: y - fsImage, maxX: x + initW, maxY: y + fsImage * 0.2 },
+        x, y, w: initW, h: initH,
       },
       properties: { toolType: 'text' },
     };

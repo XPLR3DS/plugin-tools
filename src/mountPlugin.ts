@@ -42,6 +42,14 @@ export const mountPlugin = <
   anno.registerShapeEditor(ShapeType.RECTANGLE, RectangleEditor as typeof SvelteComponent);
 
   // Supplementary overlay — paints arrowheads, distance labels and text
-  // content that Annotorious's native renderer cannot draw on its own
-  mountOverlay(anno);
+  // content that Annotorious's native renderer cannot draw on its own.
+  // Returns a controller so callers can update overlay props (e.g. strokeColor)
+  // without resorting to DOM side-channels.
+  const overlay = mountOverlay(anno);
+
+  return {
+    setStrokeColor(color: string) {
+      overlay?.setStrokeColor(color);
+    },
+  };
 }
