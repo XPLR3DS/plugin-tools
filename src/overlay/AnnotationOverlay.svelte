@@ -107,7 +107,7 @@
         x1, y1, x2, y2,
         mx: (x1 + x2) / 2, my: (y1 + y2) / 2,
         px, py, u,
-        length: `${Math.round(total)} px`,
+        length: `${total.toFixed(1)}px`,
       });
     }
     return acc;
@@ -414,7 +414,7 @@
             fill="none"
             stroke={strokeColor}
             stroke-width="1.5"
-            stroke-dasharray="8 5"
+            stroke-dasharray="{8 / viewportScale} {4 / viewportScale}"
             vector-effect="non-scaling-stroke" />
           <line
             x1={ann.x1 - ann.px * u} y1={ann.y1 - ann.py * u}
