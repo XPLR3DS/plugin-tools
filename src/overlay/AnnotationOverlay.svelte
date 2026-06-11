@@ -134,10 +134,14 @@
     ...(selector.properties?.textStyle || {}),
   });
 
-  // geometry.x / geometry.y is the text baseline-left (same convention as old TextTool).
+  // geometry.anchorX / anchorY is the text baseline-left.
+  // Older annotations (pre-fix) stored the anchor as x/y directly.
   const textPoint = (selector: ToolShape) => {
-    const g = selector.geometry as unknown as { x: number; y: number };
-    return { x: g.x, y: g.y };
+    const g = selector.geometry as any;
+    return {
+      x: g.anchorX !== undefined ? (g.anchorX as number) : (g.x as number),
+      y: g.anchorY !== undefined ? (g.anchorY as number) : (g.y as number),
+    };
   };
 
   // Font size in SVG image-pixel space (= screen font-size / viewportScale)
@@ -211,17 +215,21 @@
       // Measure exact text width via canvas (matches old TextTool behaviour)
       const fsImage = (editingStyle.fontSize || DEFAULT_TEXT_STYLE.fontSize) / Math.max(viewportScale, 0.001);
       const textW = measureTextWidth(committingText || 'Type...', fsImage);
-      const textH = fsImage * 1.2;
       const anchorGapImg = 8 / Math.max(viewportScale, 0.001);
       const oldG = annotation.target.selector.geometry as any;
+      // Derive the text anchor (baseline-left) from the geometry. New-format
+      // annotations store it in anchorX/anchorY; old-format used x/y directly.
+      const anchor = textPoint(annotation.target.selector as ToolShape);
+      const minX = anchor.x - anchorGapImg;
+      const minY = anchor.y - fsImage;
+      const maxX = anchor.x + textW + anchorGapImg;
+      const maxY = anchor.y + fsImage * 0.2;
+      // x/y/w/h match the bounds so that Annotorious's spatialTree.getAt()
+      // finds this annotation when the user clicks on the rendered rectangle.
       const newGeometry = {
-        bounds: {
-          minX: oldG.x - anchorGapImg,
-          minY: oldG.y - fsImage,
-          maxX: oldG.x + textW + anchorGapImg,
-          maxY: oldG.y + fsImage * 0.2,
-        },
-        x: oldG.x, y: oldG.y, w: textW, h: textH,
+        bounds: { minX, minY, maxX, maxY },
+        x: minX, y: minY, w: maxX - minX, h: maxY - minY,
+        anchorX: anchor.x, anchorY: anchor.y,
       };
 
       anno.updateAnnotation({
@@ -305,8 +313,11 @@
       const annotation = allAnnotations.find(a => a.id === draggingTextId) as any;
       if (annotation) {
         const oldG = annotation.target.selector.geometry as any;
-        const dx = pos.x - oldG.x;
-        const dy = pos.y - oldG.y;
+        // pos tracks the text anchor (baseline-left); compute delta from anchor
+        // so that both the anchor fields and the rect x/y shift by the same amount.
+        const oldAnchor = textPoint(annotation.target.selector as ToolShape);
+        const dx = pos.x - oldAnchor.x;
+        const dy = pos.y - oldAnchor.y;
         anno.updateAnnotation({
           ...annotation,
           target: {
@@ -315,7 +326,8 @@
               ...annotation.target.selector,
               geometry: {
                 ...oldG,
-                x: pos.x, y: pos.y,
+                x: oldG.x + dx, y: oldG.y + dy,
+                anchorX: pos.x, anchorY: pos.y,
                 bounds: {
                   minX: (oldG.bounds?.minX ?? oldG.x) + dx,
                   minY: (oldG.bounds?.minY ?? oldG.y) + dy,
