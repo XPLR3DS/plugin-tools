@@ -66,7 +66,6 @@
     mx: number; my: number;
     px: number; py: number;
     length: string;
-    u: number;
   };
 
   type SvgAnnotation =
@@ -100,13 +99,12 @@
       const lineLen = Math.hypot(x2 - x1, y2 - y1);
       const px = lineLen > 0 ? -(y2 - y1) / lineLen : 0;
       const py = lineLen > 0 ?  (x2 - x1) / lineLen : 1;
-      const u = naturalWidth * 0.012;
       acc.push({
         id: a.id, toolType: 'distance',
         linePts: pts.map(p => `${p[0]},${p[1]}`).join(' '),
         x1, y1, x2, y2,
         mx: (x1 + x2) / 2, my: (y1 + y2) / 2,
-        px, py, u,
+        px, py,
         length: `${total.toFixed(1)}px`,
       });
     }
@@ -358,7 +356,7 @@
   // ── Style helpers ────────────────────────────────────────────────────────────
 
   const svgTextStyle = (style: TextStyle) => [
-    style.bold      ? 'font-weight:bold'         : '',
+    `font-weight:${style.bold ? 'bold' : 'normal'}`,
     style.italic    ? 'font-style:italic'         : '',
     style.underline ? 'text-decoration:underline' : '',
   ].filter(Boolean).join(';');
@@ -419,7 +417,11 @@
           stroke-linejoin="round"
           vector-effect="non-scaling-stroke" />
       {:else if ann.toolType === 'distance'}
-        {@const u = ann.u}
+        {@const tick  = 8  / Math.max(viewportScale, 0.001)}
+        {@const lfs   = 14 / Math.max(viewportScale, 0.001)}
+        {@const pillW = ann.length.length * lfs * 0.7}
+        {@const pillH = lfs * 1.2}
+        {@const rx    = 4  / Math.max(viewportScale, 0.001)}
         <g class="a9s-tools-distance">
           <polyline
             points={ann.linePts}
@@ -429,27 +431,28 @@
             stroke-dasharray="{8 / viewportScale} {4 / viewportScale}"
             vector-effect="non-scaling-stroke" />
           <line
-            x1={ann.x1 - ann.px * u} y1={ann.y1 - ann.py * u}
-            x2={ann.x1 + ann.px * u} y2={ann.y1 + ann.py * u}
+            x1={ann.x1 - ann.px * tick} y1={ann.y1 - ann.py * tick}
+            x2={ann.x1 + ann.px * tick} y2={ann.y1 + ann.py * tick}
             stroke={strokeColor}
             stroke-width="1.5"
             vector-effect="non-scaling-stroke" />
           <line
-            x1={ann.x2 - ann.px * u} y1={ann.y2 - ann.py * u}
-            x2={ann.x2 + ann.px * u} y2={ann.y2 + ann.py * u}
+            x1={ann.x2 - ann.px * tick} y1={ann.y2 - ann.py * tick}
+            x2={ann.x2 + ann.px * tick} y2={ann.y2 + ann.py * tick}
             stroke={strokeColor}
             stroke-width="1.5"
             vector-effect="non-scaling-stroke" />
           <g transform={`translate(${ann.mx}, ${ann.my})`}>
             <rect
-              x={-u * 3}   y={u * 0.4}
-              width={u * 6} height={u * 1.4}
-              rx={u * 0.25}
-              fill="rgba(0,0,0,0.65)" />
+              x={-pillW / 2} y={-pillH / 2}
+              width={pillW}  height={pillH}
+              rx={rx}
+              fill="rgba(0,0,0,0.7)" />
             <text
-              x="0" y={u * 1.1}
-              font-size={u}
+              x="0" y="0"
+              font-size={lfs}
               font-family="sans-serif"
+              font-weight="bold"
               fill="white"
               text-anchor="middle"
               dominant-baseline="middle">{ann.length}</text>
