@@ -176,6 +176,10 @@
     const annotation = allAnnotations.find(a => a.id === annotationId) as any;
     if (!annotation) return;
     if (editingId && editingId !== annotationId) commitEdit();
+    // Tell Annotorious this annotation is selected so the toolbar Delete button
+    // works (deleteSelected checks selectedNativeAnnotation which is set via the
+    // selectionChanged event that setSelected fires).
+    try { (anno.state as any).selection.setSelected(annotationId); } catch {}
     editingId = annotationId;
     editingText = localTexts[annotationId] ?? annotation.bodies?.[0]?.value ?? '';
     editingStyle = getStyle(annotation.target.selector);
@@ -409,18 +413,21 @@
             points={ann.linePts}
             fill="none"
             stroke={strokeColor}
-            stroke-width={u * 0.2}
-            stroke-dasharray="{u * 1.2} {u * 0.8}" />
+            stroke-width="1.5"
+            stroke-dasharray="8 5"
+            vector-effect="non-scaling-stroke" />
           <line
             x1={ann.x1 - ann.px * u} y1={ann.y1 - ann.py * u}
             x2={ann.x1 + ann.px * u} y2={ann.y1 + ann.py * u}
             stroke={strokeColor}
-            stroke-width={u * 0.2} />
+            stroke-width="1.5"
+            vector-effect="non-scaling-stroke" />
           <line
             x1={ann.x2 - ann.px * u} y1={ann.y2 - ann.py * u}
             x2={ann.x2 + ann.px * u} y2={ann.y2 + ann.py * u}
             stroke={strokeColor}
-            stroke-width={u * 0.2} />
+            stroke-width="1.5"
+            vector-effect="non-scaling-stroke" />
           <g transform={`translate(${ann.mx}, ${ann.my})`}>
             <rect
               x={-u * 3}   y={u * 0.4}
@@ -587,9 +594,6 @@
     height: 100%;
     pointer-events: none;
   }
-
-  .a9s-tools-distance line,
-  .a9s-tools-distance polyline { vector-effect: none; }
 
   .a9s-tools-text-input {
     position: absolute;
