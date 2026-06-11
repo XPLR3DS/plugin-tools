@@ -5,7 +5,7 @@
   import { type TextStyle, DEFAULT_TEXT_STYLE } from '../text/textStyle';
 
   export let anno: ImageAnnotator<any, any>;
-  export let strokeColor = '#1a73e8';
+  export let strokeColor = '#6a6a6a';
 
   type ToolShape = Shape & {
     properties?: {
@@ -83,7 +83,7 @@
       const [x1, y1] = pts[0];
       const [x2, y2] = pts[1];
       const angle = Math.atan2(y2 - y1, x2 - x1);
-      const hl = naturalWidth * 0.015;
+      const hl = 25;
       const arrowheadStr = [
         `${x2 - hl * Math.cos(angle - Math.PI / 6)},${y2 - hl * Math.sin(angle - Math.PI / 6)}`,
         `${x2},${y2}`,
@@ -394,7 +394,14 @@
   <g>
     {#each svgAnnotations as ann (ann.id)}
       {#if ann.toolType === 'arrow'}
-        <polyline points={ann.arrowheadStr} fill={strokeColor} stroke={strokeColor} />
+        <polyline
+          points={ann.arrowheadStr}
+          fill="none"
+          stroke={strokeColor}
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          vector-effect="non-scaling-stroke" />
       {:else if ann.toolType === 'distance'}
         {@const u = ann.u}
         <g class="a9s-tools-distance">
@@ -416,16 +423,17 @@
             stroke-width={u * 0.2} />
           <g transform={`translate(${ann.mx}, ${ann.my})`}>
             <rect
-              x={-u * 3}   y={-u * 1.8}
+              x={-u * 3}   y={u * 0.4}
               width={u * 6} height={u * 1.4}
               rx={u * 0.25}
               fill="rgba(0,0,0,0.65)" />
             <text
-              x="0" y={-u * 0.65}
+              x="0" y={u * 1.1}
               font-size={u}
               font-family="sans-serif"
               fill="white"
-              text-anchor="middle">{ann.length}</text>
+              text-anchor="middle"
+              dominant-baseline="middle">{ann.length}</text>
           </g>
         </g>
       {/if}
