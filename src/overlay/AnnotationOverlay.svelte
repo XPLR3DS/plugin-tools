@@ -408,14 +408,16 @@
   <g>
     {#each svgAnnotations as ann (ann.id)}
       {#if ann.toolType === 'arrow'}
-        <polyline
-          points={ann.arrowheadStr}
-          fill="none"
-          stroke={strokeColor}
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          vector-effect="non-scaling-stroke" />
+        <g data-annotation-type="ARROW" data-annotation-id={ann.id}>
+          <polyline
+            points={ann.arrowheadStr}
+            fill="none"
+            stroke={strokeColor}
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            vector-effect="non-scaling-stroke" />
+        </g>
       {:else if ann.toolType === 'distance'}
         {@const tick  = 8  / Math.max(viewportScale, 0.001)}
         {@const lfs   = 14 / Math.max(viewportScale, 0.001)}
@@ -424,7 +426,7 @@
         {@const rx    = 4  / Math.max(viewportScale, 0.001)}
         {@const lox   = ann.px * 20 / Math.max(viewportScale, 0.001)}
         {@const loy   = ann.py * 20 / Math.max(viewportScale, 0.001)}
-        <g class="a9s-tools-distance">
+        <g class="a9s-tools-distance" data-annotation-type="DISTANCE" data-annotation-id={ann.id}>
           <polyline
             points={ann.linePts}
             fill="none"
