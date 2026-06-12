@@ -422,6 +422,8 @@
         {@const pillW = ann.length.length * lfs * 0.7}
         {@const pillH = lfs * 1.2}
         {@const rx    = 4  / Math.max(viewportScale, 0.001)}
+        {@const lox   = ann.px * 20 / Math.max(viewportScale, 0.001)}
+        {@const loy   = ann.py * 20 / Math.max(viewportScale, 0.001)}
         <g class="a9s-tools-distance">
           <polyline
             points={ann.linePts}
@@ -442,7 +444,7 @@
             stroke={strokeColor}
             stroke-width="1.5"
             vector-effect="non-scaling-stroke" />
-          <g transform={`translate(${ann.mx}, ${ann.my})`}>
+          <g transform={`translate(${ann.mx + lox}, ${ann.my + loy})`}>
             <rect
               x={-pillW / 2} y={-pillH / 2}
               width={pillW}  height={pillH}

@@ -8309,7 +8309,25 @@ function Pr(e) {
     n[5],
     1e-3
   );
-  return n[84] = f, n;
+  n[84] = f;
+  const r = (
+    /*ann*/
+    n[77].px * 20 / Math.max(
+      /*viewportScale*/
+      n[5],
+      1e-3
+    )
+  );
+  n[85] = r;
+  const a = (
+    /*ann*/
+    n[77].py * 20 / Math.max(
+      /*viewportScale*/
+      n[5],
+      1e-3
+    )
+  );
+  return n[86] = a, n;
 }
 function ss(e) {
   let n, t, o, s, l, f, r, a, c, u, p, d, _, g, h, E, A, I, y, b, k, M, m = (
@@ -8367,8 +8385,10 @@ function ss(e) {
       e[83]), i(E, "rx", k = /*rx*/
       e[84]), i(E, "fill", "rgba(0,0,0,0.7)"), i(M, "x", "0"), i(M, "y", "0"), i(M, "font-size", w = /*lfs*/
       e[81]), i(M, "font-family", "sans-serif"), i(M, "font-weight", "bold"), i(M, "fill", "white"), i(M, "text-anchor", "middle"), i(M, "dominant-baseline", "middle"), i(h, "transform", S = `translate(${/*ann*/
-      e[77].mx}, ${/*ann*/
-      e[77].my})`), i(n, "class", "a9s-tools-distance");
+      e[77].mx + /*lox*/
+      e[85]}, ${/*ann*/
+      e[77].my + /*loy*/
+      e[86]})`), i(n, "class", "a9s-tools-distance");
     },
     m(P, L) {
       B(P, n, L), Z(n, t), Z(n, l), Z(n, u), Z(n, h), Z(h, E), Z(h, M), Z(M, O);
@@ -8443,10 +8463,12 @@ function ss(e) {
       4096 && m !== (m = /*ann*/
       P[77].length + "") && Gs(O, m), L[0] & /*viewportScale*/
       32 && w !== (w = /*lfs*/
-      P[81]) && i(M, "font-size", w), L[0] & /*svgAnnotations*/
-      4096 && S !== (S = `translate(${/*ann*/
-      P[77].mx}, ${/*ann*/
-      P[77].my})`) && i(h, "transform", S);
+      P[81]) && i(M, "font-size", w), L[0] & /*svgAnnotations, viewportScale*/
+      4128 && S !== (S = `translate(${/*ann*/
+      P[77].mx + /*lox*/
+      P[85]}, ${/*ann*/
+      P[77].my + /*loy*/
+      P[86]})`) && i(h, "transform", S);
     },
     d(P) {
       P && j(n);
