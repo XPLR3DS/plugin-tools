@@ -15,7 +15,7 @@
     "url": "https://github.com/annotorious/annotorious-plugin-tools/issues"
   },
   "scripts": {
-    "prepare": "tsc && vite build",
+    "prepare": "vite build",
     "start": "vite --host",
     "build": "tsc && vite build",
     "preview": "vite preview"
