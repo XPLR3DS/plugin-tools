@@ -3,9 +3,18 @@
   import type { ImageAnnotator, ImageAnnotation, Shape, PolylinePoint } from '@annotorious/annotorious';
   import TextToolbar from '../text/TextToolbar.svelte';
   import { type TextStyle, DEFAULT_TEXT_STYLE } from '../text/textStyle';
+  import { type ViewBox, getViewBoxAtPoint, pixelsToMm, formatMm } from '../distance/viewbox';
 
   export let anno: ImageAnnotator<any, any>;
   export let strokeColor = '#6a6a6a';
+  // Drawing-scale viewBoxes (regions carrying a 1:N scale). When a distance
+  // annotation's start point falls inside one, its label is shown in real-world
+  // mm instead of raw pixels. Fed in from the host via the mountPlugin
+  // controller's setViewBoxes().
+  export let viewBoxes: ViewBox[] = [];
+  // Show the region outlines + "1:N" scale labels (host toggles this on while
+  // the distance tool is active, mirroring the old React tool).
+  export let showViewBoxes = false;
 
   type ToolShape = Shape & {
     properties?: {
@@ -99,13 +108,21 @@
       const lineLen = Math.hypot(x2 - x1, y2 - y1);
       const px = lineLen > 0 ? -(y2 - y1) / lineLen : 0;
       const py = lineLen > 0 ?  (x2 - x1) / lineLen : 1;
+      // Real-world label when the start point is inside a scaled viewBox,
+      // otherwise fall back to the raw pixel length. A persisted measurement
+      // body (written by the host on create) takes precedence so the displayed
+      // value always matches the stored one.
+      const persisted = a.bodies?.find((b: any) => b.purpose === 'measurement')?.value as string | undefined;
+      const vb = getViewBoxAtPoint(viewBoxes, x1, y1);
+      const mm = vb ? pixelsToMm(total, vb.scale) : null;
+      const length = persisted ?? (mm != null ? formatMm(mm) : `${total.toFixed(1)}px`);
       acc.push({
         id: a.id, toolType: 'distance',
         linePts: pts.map(p => `${p[0]},${p[1]}`).join(' '),
         x1, y1, x2, y2,
         mx: (x1 + x2) / 2, my: (y1 + y2) / 2,
         px, py,
-        length: `${total.toFixed(1)}px`,
+        length,
       });
     }
     return acc;
@@ -406,6 +423,40 @@
   viewBox={viewBox}
   preserveAspectRatio="xMinYMin meet">
   <g>
+    <!-- Drawing-scale viewBox region outlines + "1:N" labels, shown while the
+         distance tool is active. Stroke/label sizes are divided by viewportScale
+         to keep a constant on-screen size (the overlay's image-pixel analogue of
+         the old React tool's scaleFactor). -->
+    {#if showViewBoxes}
+      {#each viewBoxes as vb (vb.viewBoxId)}
+        {@const pos = vb.viewBoxPosition}
+        {#if pos && pos.width != null && pos.height != null}
+          {@const sw  = 1.5 / Math.max(viewportScale, 0.001)}
+          {@const dsh = 6   / Math.max(viewportScale, 0.001)}
+          {@const gap = 3   / Math.max(viewportScale, 0.001)}
+          {@const vrx = 2   / Math.max(viewportScale, 0.001)}
+          {@const vfs = 12  / Math.max(viewportScale, 0.001)}
+          <g class="a9s-tools-viewbox" data-viewbox-id={vb.viewBoxId}>
+            <rect
+              x={pos.x} y={pos.y}
+              width={pos.width} height={pos.height}
+              fill="none"
+              stroke="rgba(0,180,255,0.35)"
+              stroke-width={sw}
+              stroke-dasharray="{dsh} {gap}"
+              rx={vrx} />
+            <text
+              x={pos.x + 6 / Math.max(viewportScale, 0.001)}
+              y={pos.y + 18 / Math.max(viewportScale, 0.001)}
+              fill="rgba(0,180,255,0.7)"
+              font-size={vfs}
+              font-family="sans-serif"
+              font-weight="bold"
+              style="pointer-events:none; user-select:none;">1:{vb.scale}</text>
+          </g>
+        {/if}
+      {/each}
+    {/if}
     {#each svgAnnotations as ann (ann.id)}
       {#if ann.toolType === 'arrow'}
         <g data-annotation-type="ARROW" data-annotation-id={ann.id}>
