@@ -26,7 +26,13 @@
   /** Needed for the <mask> element **/
   const MIDPOINT_SIZE = 4.5;
 
-  /** Props */
+  /** Props
+   * Shared editor for ShapeType.POLYLINE — used by both the native 'path' tool
+   * and the 'distance' tool (registerShapeEditor is one-per-ShapeType, and a
+   * distance measurement is just a 2-point Polyline; the measurement label
+   * itself is drawn by the supplementary overlay layer based on
+   * `shape.properties?.toolType === 'distance'`).
+   */
   export let shape: Polyline;
   export let computedStyle: string | undefined;
   export let transform: Transform;
@@ -139,29 +145,17 @@
 
     const isSelected = selectedCorners.includes(idx);
 
-    // Clicking on a handle with alt key pressed toggles between corner/curve
-    if (isAltPressed) {
-      const polyline = togglePolylineCorner(shape, idx, viewportScale);
-      dispatch('change', polyline);
-
-      // Ensure the toggled corner is selected, and deselect others
-      if (!isSelected || selectedCorners.length > 1) {
-        selectedCorners = [idx];
-      }
-    } else if (evt.metaKey || evt.ctrlKey || evt.shiftKey) {
-      if (isSelected) 
+    if (evt.metaKey || evt.ctrlKey || evt.shiftKey) {
+      // Multi-select: add/remove from selection
+      if (isSelected)
         selectedCorners = selectedCorners.filter(i => i !== idx);
       else
         selectedCorners = [...selectedCorners, idx];
     } else {
-      if (isSelected && selectedCorners.length > 1)
-        // Keep selected, de-select others
-        selectedCorners = [idx]
-      else if (isSelected)
-        // De-select
-        selectedCorners = [];
-      else
-        selectedCorners = [idx];
+      // Regular click: toggle corner ↔ curve
+      const polyline = togglePolylineCorner(shape, idx, viewportScale);
+      dispatch('change', polyline);
+      selectedCorners = [idx];
     }
   }
 
@@ -178,7 +172,7 @@
       if (i !== idx) return point;
 
       const newPt = { ...point, locked: true };
-      
+
       const handle = pt.inHandle || pt.outHandle;
       if (!handle) return point;
 
