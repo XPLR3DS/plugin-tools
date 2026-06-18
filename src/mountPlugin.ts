@@ -7,7 +7,6 @@ import { EllipseEditor, RubberbandEllipse } from './ellipse';
 import { LineEditor, RubberbandLine } from './line';
 import { mountOverlay } from './overlay';
 import { RubberbandPath, PathEditor } from './path';
-import { StarEditor, RubberbandStar } from './star';
 import { RectangleEditor, RubberbandText } from './text';
 
 export const mountPlugin = <
@@ -30,9 +29,6 @@ export const mountPlugin = <
   anno.registerDrawingTool('path', RubberbandPath as typeof SvelteComponent);
   anno.registerDrawingTool('distance', RubberbandDistance as typeof SvelteComponent);
   anno.registerShapeEditor(ShapeType.POLYLINE, PathEditor as typeof SvelteComponent);
-
-  anno.registerDrawingTool('star', RubberbandStar as typeof SvelteComponent);
-  anno.registerShapeEditor(ShapeType.POLYGON, StarEditor as typeof SvelteComponent);
 
   // RECTANGLE is shared by the native 'rectangle' tool and 'text'. This
   // RectangleEditor supersedes Annotorious's built-in rectangle editor —
