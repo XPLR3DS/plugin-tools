@@ -59,7 +59,7 @@ export const getViewBoxAtPoint = (
  */
 export const pixelsToMm = (pixels: number, scale: number): number | null => {
   if (!scale || scale <= 0) return null;
-  return pixels * scale;
+  return pixels * scale * 0.26458333333333334;
 };
 
 /**
