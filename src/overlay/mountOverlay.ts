@@ -1,7 +1,7 @@
 import type { Annotation, ImageAnnotation, ImageAnnotator } from '@annotorious/annotorious';
 import type { OpenSeadragonAnnotator } from '@annotorious/openseadragon';
 import AnnotationOverlay from './AnnotationOverlay.svelte';
-import type { ViewBox } from '../distance/viewbox';
+import type { ViewBox, ImageMetadata } from '../distance/viewbox';
 
 export const mountOverlay = <
   I extends Annotation = ImageAnnotation,
@@ -31,6 +31,10 @@ export const mountOverlay = <
       // distance tool is active).
     setShowViewBoxes(show: boolean) {
       (overlay as any).$set({ showViewBoxes: show });
+    },
+      // Image metadata used to derive pixels-per-mm for the mm conversion.
+    setImageMetadata(metadata: ImageMetadata | null) {
+      (overlay as any).$set({ imageMetadata: metadata });
     },
   };
 };

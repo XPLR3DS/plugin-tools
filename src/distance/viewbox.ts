@@ -6,6 +6,50 @@
 // start point falls inside such a region is converted from image pixels to
 // real-world millimetres. See docs/distance-viewbox.md for the full rationale.
 
+const MM_PER_INCH = 25.4;
+const DEFAULT_DPI = 96;
+
+/**
+ * Pixels per millimetre on the drawing sheet. The pixel→mm conversion divides
+ * by this before applying the 1:N drawing scale.
+ *
+ * Default assumes a 96-DPI export (96 / 25.4 ≈ 3.7795 px/mm, i.e. ≈ 0.2646
+ * mm/px), preserving the previous hard-coded behaviour until a real value is
+ * derived from image metadata.
+ */
+export const DEFAULT_PIXELS_PER_MM = DEFAULT_DPI / MM_PER_INCH;
+
+/**
+ * Image metadata used to derive the real-world pixel density.
+ *
+ * PLACEHOLDER shape — extend with the actual fields once the metadata contract
+ * coming from the image pipeline is defined (e.g. physical size + pixel size,
+ * EXIF resolution, scan calibration, etc.).
+ */
+export interface ImageMetadata {
+  /** Dots per inch, when known from the source image / scan. */
+  dpi?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * Derive pixels-per-mm from image metadata.
+ *
+ * PLACEHOLDER: currently only handles an explicit `dpi`
+ * (ppmm = dpi / 25.4 → dots per inch to dots per mm) and otherwise falls back
+ * to {@link DEFAULT_PIXELS_PER_MM}. Replace/extend this with the real
+ * derivation once the metadata format is finalised.
+ */
+export const metadataToPixelsPerMm = (
+  metadata?: ImageMetadata | null
+): number => {
+  if (metadata?.dpi && metadata.dpi > 0) {
+    return metadata.dpi / MM_PER_INCH;
+  }
+  // TODO: derive from other metadata (physical dimensions / pixel spacing).
+  return DEFAULT_PIXELS_PER_MM;
+};
+
 export interface ViewBoxPosition {
   x: number;
   y: number;
@@ -30,6 +74,8 @@ export interface MeasurementBody {
   rawMm: number;
   viewBoxId: string;
   scale: number;
+  /** Pixels-per-mm used for the conversion (for traceability/recompute). */
+  ppmm: number;
 }
 
 /**
@@ -53,13 +99,20 @@ export const getViewBoxAtPoint = (
 /**
  * Convert a pixel distance (natural image coords) to millimetres using the 1:N
  * drawing scale. A 1:N scale means 1 mm on the sheet represents N mm in
- * reality; we assume the image is exported at 1 px = 1 mm on the sheet, so
- *   real_distance_mm = pixel_distance * N
- * Returns null when the scale is missing or invalid.
+ * reality. `ppmm` is the image's pixels-per-mm on the sheet (derived from image
+ * metadata via {@link metadataToPixelsPerMm}), so:
+ *   mm_on_sheet      = pixel_distance / ppmm
+ *   real_distance_mm = mm_on_sheet * N = (pixel_distance / ppmm) * N
+ * Returns null when the scale or ppmm is missing/invalid.
  */
-export const pixelsToMm = (pixels: number, scale: number): number | null => {
+export const pixelsToMm = (
+  pixels: number,
+  scale: number,
+  ppmm: number = DEFAULT_PIXELS_PER_MM
+): number | null => {
   if (!scale || scale <= 0) return null;
-  return pixels * scale * 0.26458333333333334;
+  if (!ppmm || ppmm <= 0) return null;
+  return (pixels / ppmm) * scale;
 };
 
 /**
@@ -84,11 +137,12 @@ export const measurementBodyFor = (
   viewBoxes: ViewBox[] | undefined | null,
   startX: number,
   startY: number,
-  lengthPx: number
+  lengthPx: number,
+  ppmm: number = DEFAULT_PIXELS_PER_MM
 ): MeasurementBody[] => {
   const vb = getViewBoxAtPoint(viewBoxes, startX, startY);
   if (!vb) return [];
-  const mm = pixelsToMm(lengthPx, vb.scale);
+  const mm = pixelsToMm(lengthPx, vb.scale, ppmm);
   if (mm == null) return [];
   return [
     {
@@ -99,6 +153,7 @@ export const measurementBodyFor = (
       rawMm: mm,
       viewBoxId: vb.viewBoxId,
       scale: vb.scale,
+      ppmm,
     },
   ];
 };

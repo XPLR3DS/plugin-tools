@@ -39,14 +39,23 @@ const getViewBoxAtPoint = (viewBoxes, x, y) => {
   );
 };
 
-// Pixel distance -> millimetres using the 1:N drawing scale.
-// A 1:N scale means 1 mm on the sheet represents N mm in reality.
-// Assumption: image is exported at 1 px = 1 mm on the sheet, so:
-//   real_distance_mm = pixel_distance * N
-const pixelsToMm = (pixels, scale) => {
+// Pixel distance -> millimetres using the 1:N drawing scale and the image's
+// pixels-per-mm (ppmm). A 1:N scale means 1 mm on the sheet represents N mm in
+// reality. ppmm comes from image metadata (metadataToPixelsPerMm); it defaults
+// to DEFAULT_PIXELS_PER_MM = 96 / 25.4 (a 96-DPI export) until metadata is wired:
+//   mm_on_sheet      = pixel_distance / ppmm
+//   real_distance_mm = mm_on_sheet * N
+const pixelsToMm = (pixels, scale, ppmm = DEFAULT_PIXELS_PER_MM) => {
   if (!scale || scale <= 0) return null;
-  return pixels * scale;
+  if (!ppmm || ppmm <= 0) return null;
+  return (pixels / ppmm) * scale;
 };
+
+// ppmm is derived from image metadata (DPI). PLACEHOLDER until the real
+// metadata contract is wired; the host passes metadata to the plugin via the
+// mountPlugin controller's setImageMetadata().
+const metadataToPixelsPerMm = (metadata) =>
+  metadata?.dpi > 0 ? metadata.dpi / 25.4 : DEFAULT_PIXELS_PER_MM;
 
 // Display format. NOTE the original divides the rounded mm by 10 — i.e. it
 // presents the value in centimetres-as-mm. Preserved exactly for parity.
