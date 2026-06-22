@@ -66,6 +66,8 @@ export const pixelsToMm = (
   scale: number,
   ppmm: number
 ): number | null => {
+  console.log('ppmm',ppmm)
+  console.log('distance calc px/ppmm * scale',(pixels / ppmm) * scale)
   if (!scale || scale <= 0) return null;
   if (!ppmm || ppmm <= 0) return null;
   return (pixels / ppmm) * scale;
