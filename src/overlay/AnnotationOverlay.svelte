@@ -5,11 +5,9 @@
   import { type TextStyle, DEFAULT_TEXT_STYLE } from '../text/textStyle';
   import {
     type ViewBox,
-    type ImageMetadata,
     getViewBoxAtPoint,
     pixelsToMm,
     formatMm,
-    metadataToPixelsPerMm,
   } from '../distance/viewbox';
 
   export let anno: ImageAnnotator<any, any>;
@@ -22,12 +20,11 @@
   // Show the region outlines + "1:N" scale labels (host toggles this on while
   // the distance tool is active, mirroring the old React tool).
   export let showViewBoxes = false;
-  // Image metadata used to derive the real-world pixel density (pixels per mm).
-  // Fed in from the host via the mountPlugin controller's setImageMetadata().
-  export let imageMetadata: ImageMetadata | null = null;
-  // Pixels per mm on the sheet, derived from the metadata. PLACEHOLDER logic
-  // lives in metadataToPixelsPerMm() until the real metadata contract is wired.
-  $: pixelsPerMm = metadataToPixelsPerMm(imageMetadata);
+  // Pixels per mm on the sheet (sourced from image metadata, e.g. the PNG
+  // PixelsPerMm tag). Fed in from the host via the mountPlugin controller's
+  // setPixelsPerMm(). Used to convert a measured pixel distance to real-world
+  // mm (pixelsToMm divides by this, then multiplies by the viewBox scale).
+  export let pixelsPerMm: number | null = null;
 
   type ToolShape = Shape & {
     properties?: {
@@ -133,7 +130,7 @@
       // that value is only written on create, so reading it here would leave the
       // label stale when the annotation is moved or its endpoints are dragged.)
       const vb = getViewBoxAtPoint(viewBoxes, x1, y1);
-      const mm = vb ? pixelsToMm(total, vb.scale, pixelsPerMm) : null;
+      const mm = vb && pixelsPerMm ? pixelsToMm(total, vb.scale, pixelsPerMm) : null;
       const length = mm != null ? formatMm(mm) : `${total.toFixed(1)}px`;
       acc.push({
         id: a.id, toolType: 'distance',

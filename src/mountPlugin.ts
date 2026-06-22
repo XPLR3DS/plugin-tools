@@ -3,7 +3,7 @@ import { ShapeType, type ImageAnnotator, type ImageAnnotation, type Annotation }
 import type { OpenSeadragonAnnotator } from '@annotorious/openseadragon';
 import { RubberbandArrow } from './arrow';
 import { RubberbandDistance } from './distance';
-import type { ViewBox, ImageMetadata } from './distance/viewbox';
+import type { ViewBox } from './distance/viewbox';
 import { EllipseEditor, RubberbandEllipse } from './ellipse';
 import { LineEditor, RubberbandLine } from './line';
 import { mountOverlay } from './overlay';
@@ -58,10 +58,11 @@ export const mountPlugin = <
     setShowViewBoxes(show: boolean) {
       overlay?.setShowViewBoxes(show);
     },
-    // Provide image metadata so distance measurements use the correct
-    // pixels-per-mm. See metadataToPixelsPerMm() / docs/distance-viewbox.md.
-    setImageMetadata(metadata: ImageMetadata | null) {
-      overlay?.setImageMetadata(metadata);
+    // Provide the image's pixels-per-mm (from metadata, e.g. PNG PixelsPerMm)
+    // so distance measurements convert to real-world mm. See
+    // docs/distance-viewbox.md.
+    setPixelsPerMm(ppmm: number | null) {
+      overlay?.setPixelsPerMm(ppmm);
     },
   };
 }

@@ -41,26 +41,31 @@ const getViewBoxAtPoint = (viewBoxes, x, y) => {
 
 // Pixel distance -> millimetres using the 1:N drawing scale and the image's
 // pixels-per-mm (ppmm). A 1:N scale means 1 mm on the sheet represents N mm in
-// reality. ppmm comes from image metadata (metadataToPixelsPerMm); it defaults
-// to DEFAULT_PIXELS_PER_MM = 96 / 25.4 (a 96-DPI export) until metadata is wired:
+// reality. ppmm is supplied by the host from image metadata (the PNG
+// `PixelsPerMm` tag), passed in via the mountPlugin controller's
+// setPixelsPerMm(); there is no default — a missing/invalid ppmm yields null
+// (the label then falls back to raw pixels):
 //   mm_on_sheet      = pixel_distance / ppmm
-//   real_distance_mm = mm_on_sheet * N
-const pixelsToMm = (pixels, scale, ppmm = DEFAULT_PIXELS_PER_MM) => {
+//   real_distance_mm = mm_on_sheet * N   (i.e. scaled up by the drawing scale)
+const pixelsToMm = (pixels, scale, ppmm) => {
   if (!scale || scale <= 0) return null;
   if (!ppmm || ppmm <= 0) return null;
   return (pixels / ppmm) * scale;
 };
 
-// ppmm is derived from image metadata (DPI). PLACEHOLDER until the real
-// metadata contract is wired; the host passes metadata to the plugin via the
-// mountPlugin controller's setImageMetadata().
-const metadataToPixelsPerMm = (metadata) =>
-  metadata?.dpi > 0 ? metadata.dpi / 25.4 : DEFAULT_PIXELS_PER_MM;
-
 // Display format. NOTE the original divides the rounded mm by 10 — i.e. it
 // presents the value in centimetres-as-mm. Preserved exactly for parity.
 const formatMm = (mm) => `${mm.toFixed(0) / 10}mm`;
 ```
+
+## Pixels-per-mm data flow
+
+`ppmm` originates in the host: `markupService.fetchDocumentImage` reads the PNG
+`PixelsPerMm` tag and stores it on the document layer. `AnnotationViewer`
+derives `currentPpMm` from the current layer and passes it to
+`useAnnotoriousSetup`, which forwards it to the plugin via `setPixelsPerMm()`
+(overlay label) and to `measurementBodyFor()` (persisted body). Both paths apply
+`(pixels / ppmm) * scale`, so the live label and the stored value agree.
 
 ## Which viewBox a measurement belongs to
 

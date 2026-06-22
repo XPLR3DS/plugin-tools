@@ -6,19 +6,6 @@
 // start point falls inside such a region is converted from image pixels to
 // real-world millimetres. See docs/distance-viewbox.md for the full rationale.
 
-/**
- * Image metadata used to derive the real-world pixel density.
- *
- * PLACEHOLDER shape — extend with the actual fields once the metadata contract
- * coming from the image pipeline is defined (e.g. physical size + pixel size,
- * EXIF resolution, scan calibration, etc.).
- */
-export interface ImageMetadata {
-  /** Dots per inch, when known from the source image / scan. */
-  dpi?: number;
-  [key: string]: unknown;
-}
-
 export interface ViewBoxPosition {
   x: number;
   y: number;
@@ -68,8 +55,8 @@ export const getViewBoxAtPoint = (
 /**
  * Convert a pixel distance (natural image coords) to millimetres using the 1:N
  * drawing scale. A 1:N scale means 1 mm on the sheet represents N mm in
- * reality. `ppmm` is the image's pixels-per-mm on the sheet (derived from image
- * metadata via {@link metadataToPixelsPerMm}), so:
+ * reality. `ppmm` is the image's pixels-per-mm on the sheet (sourced from the
+ * host's image metadata, e.g. the PNG `PixelsPerMm` tag), so:
  *   mm_on_sheet      = pixel_distance / ppmm
  *   real_distance_mm = mm_on_sheet * N = (pixel_distance / ppmm) * N
  * Returns null when the scale or ppmm is missing/invalid.
@@ -77,7 +64,7 @@ export const getViewBoxAtPoint = (
 export const pixelsToMm = (
   pixels: number,
   scale: number,
-  ppmm: number 
+  ppmm: number
 ): number | null => {
   if (!scale || scale <= 0) return null;
   if (!ppmm || ppmm <= 0) return null;
