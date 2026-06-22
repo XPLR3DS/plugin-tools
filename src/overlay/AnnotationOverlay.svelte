@@ -3,9 +3,28 @@
   import type { ImageAnnotator, ImageAnnotation, Shape, PolylinePoint } from '@annotorious/annotorious';
   import TextToolbar from '../text/TextToolbar.svelte';
   import { type TextStyle, DEFAULT_TEXT_STYLE } from '../text/textStyle';
+  import {
+    type ViewBox,
+    getViewBoxAtPoint,
+    pixelsToMm,
+    formatMm,
+  } from '../distance/viewbox';
 
   export let anno: ImageAnnotator<any, any>;
   export let strokeColor = '#6a6a6a';
+  // Drawing-scale viewBoxes (regions carrying a 1:N scale). When a distance
+  // annotation's start point falls inside one, its label is shown in real-world
+  // mm instead of raw pixels. Fed in from the host via the mountPlugin
+  // controller's setViewBoxes().
+  export let viewBoxes: ViewBox[] = [];
+  // Show the region outlines + "1:N" scale labels (host toggles this on while
+  // the distance tool is active, mirroring the old React tool).
+  export let showViewBoxes = false;
+  // Pixels per mm on the sheet (sourced from image metadata, e.g. the PNG
+  // PixelsPerMm tag). Fed in from the host via the mountPlugin controller's
+  // setPixelsPerMm(). Used to convert a measured pixel distance to real-world
+  // mm (pixelsToMm divides by this, then multiplies by the viewBox scale).
+  export let pixelsPerMm: number | null = null;
 
   type ToolShape = Shape & {
     properties?: {
@@ -20,6 +39,12 @@
   let naturalWidth = 1;
   let viewportScale = 1;
   let resizeObserver: ResizeObserver | undefined;
+
+  // Id of the viewBox the cursor is currently inside (null = none). Drives the
+  // "active" highlight while the distance tool is active.
+  let activeViewBoxId: string | null = null;
+  // Stop highlighting when the region outlines are hidden.
+  $: if (!showViewBoxes) activeViewBoxId = null;
 
   // Text editing state
   let editingId: string | null = null;
@@ -99,13 +124,21 @@
       const lineLen = Math.hypot(x2 - x1, y2 - y1);
       const px = lineLen > 0 ? -(y2 - y1) / lineLen : 0;
       const py = lineLen > 0 ?  (x2 - x1) / lineLen : 1;
+      // Always compute the label LIVE from the current geometry: real-world mm
+      // when the start point is inside a scaled viewBox, otherwise the raw pixel
+      // length. (Deliberately NOT read from the persisted measurement body —
+      // that value is only written on create, so reading it here would leave the
+      // label stale when the annotation is moved or its endpoints are dragged.)
+      const vb = getViewBoxAtPoint(viewBoxes, x1, y1);
+      const mm = vb && pixelsPerMm ? pixelsToMm(total, vb.scale, pixelsPerMm) : null;
+      const length = mm != null ? formatMm(mm) : `${total.toFixed(1)}px`;
       acc.push({
         id: a.id, toolType: 'distance',
         linePts: pts.map(p => `${p[0]},${p[1]}`).join(' '),
         x1, y1, x2, y2,
         mx: (x1 + x2) / 2, my: (y1 + y2) / 2,
         px, py,
-        length: `${total.toFixed(1)}px`,
+        length,
       });
     }
     return acc;
@@ -294,6 +327,14 @@
   };
 
   const handleWindowMouseMove = (e: MouseEvent) => {
+    // Track which viewBox the cursor is inside so it can be highlighted. Done
+    // here (on a window listener) because the overlay SVG is pointer-events:none.
+    if (showViewBoxes) {
+      const { x, y } = clientToImage(e.clientX, e.clientY);
+      const next = getViewBoxAtPoint(viewBoxes, x, y)?.viewBoxId ?? null;
+      if (next !== activeViewBoxId) activeViewBoxId = next;
+    }
+
     if (!draggingTextId || !dragOffset) return;
     const imgPos = clientToImage(e.clientX, e.clientY);
     draggingPos = {
@@ -406,6 +447,41 @@
   viewBox={viewBox}
   preserveAspectRatio="xMinYMin meet">
   <g>
+    <!-- Drawing-scale viewBox region outlines + "1:N" labels, shown while the
+         distance tool is active. Strokes use vector-effect:non-scaling-stroke so
+         their widths/dashes stay constant on screen regardless of zoom; the
+         label font is divided by viewportScale for the same reason. The region
+         under the cursor (activeViewBoxId) gets a solid, brighter, animated
+         highlight; idle regions get an animated "marching ants" dashed outline. -->
+    {#if showViewBoxes}
+      {#each viewBoxes as vb (vb.viewBoxId)}
+        {@const pos = vb.viewBoxPosition}
+        {#if pos && pos.width != null && pos.height != null}
+          {@const isActive = activeViewBoxId === vb.viewBoxId}
+          {@const vrx = 2  / Math.max(viewportScale, 0.001)}
+          {@const vfs = 12 / Math.max(viewportScale, 0.001)}
+          <g
+            class="a9s-tools-viewbox"
+            class:is-active={isActive}
+            data-viewbox-id={vb.viewBoxId}>
+            <rect
+              class="a9s-tools-viewbox-rect"
+              x={pos.x} y={pos.y}
+              width={pos.width} height={pos.height}
+              fill="none"
+              rx={vrx}
+              vector-effect="non-scaling-stroke" />
+            <text
+              class="a9s-tools-viewbox-label"
+              x={pos.x + 6 / Math.max(viewportScale, 0.001)}
+              y={pos.y + 18 / Math.max(viewportScale, 0.001)}
+              font-size={vfs}
+              font-family="sans-serif"
+              font-weight="bold">1:{vb.scale}</text>
+          </g>
+        {/if}
+      {/each}
+    {/if}
     {#each svgAnnotations as ann (ann.id)}
       {#if ann.toolType === 'arrow'}
         <g data-annotation-type="ARROW" data-annotation-id={ann.id}>
@@ -625,5 +701,57 @@
     pointer-events: all;
     z-index: 1000;
     box-sizing: border-box;
+  }
+
+  /* ── viewBox region outlines ─────────────────────────────────────────── */
+  .a9s-tools-viewbox-rect {
+    stroke: rgba(0, 180, 255, 0.35);
+    stroke-width: 1.5;
+    stroke-dasharray: 6 3;
+    /* "marching ants" so idle regions read as interactive guides */
+    animation: a9s-viewbox-march 0.6s linear infinite;
+    transition: stroke 0.15s ease, stroke-width 0.15s ease;
+  }
+
+  .a9s-tools-viewbox-label {
+    fill: rgba(0, 180, 255, 0.7);
+    pointer-events: none;
+    user-select: none;
+    transition: fill 0.15s ease;
+  }
+
+  /* Active = cursor inside this region: solid, brighter, thicker, glowing. */
+  .a9s-tools-viewbox.is-active .a9s-tools-viewbox-rect {
+    stroke: #00b4ff;
+    stroke-width: 3;
+    stroke-dasharray: none;
+    animation: a9s-viewbox-pulse 1.1s ease-in-out infinite;
+  }
+
+  .a9s-tools-viewbox.is-active .a9s-tools-viewbox-label {
+    fill: #00b4ff;
+  }
+
+  @keyframes a9s-viewbox-march {
+    to {
+      stroke-dashoffset: -9;
+    }
+  }
+
+  @keyframes a9s-viewbox-pulse {
+    0%,
+    100% {
+      opacity: 0.85;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .a9s-tools-viewbox-rect,
+    .a9s-tools-viewbox.is-active .a9s-tools-viewbox-rect {
+      animation: none;
+    }
   }
 </style>

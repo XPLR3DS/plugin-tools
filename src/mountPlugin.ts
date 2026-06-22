@@ -3,6 +3,7 @@ import { ShapeType, type ImageAnnotator, type ImageAnnotation, type Annotation }
 import type { OpenSeadragonAnnotator } from '@annotorious/openseadragon';
 import { RubberbandArrow } from './arrow';
 import { RubberbandDistance } from './distance';
+import type { ViewBox } from './distance/viewbox';
 import { EllipseEditor, RubberbandEllipse } from './ellipse';
 import { LineEditor, RubberbandLine } from './line';
 import { mountOverlay } from './overlay';
@@ -46,6 +47,22 @@ export const mountPlugin = <
   return {
     setStrokeColor(color: string) {
       overlay?.setStrokeColor(color);
+    },
+    // Provide the drawing-scale viewBoxes so distance measurements can be
+    // shown/persisted in real-world mm. See docs/distance-viewbox.md.
+    setViewBoxes(viewBoxes: ViewBox[]) {
+      overlay?.setViewBoxes(viewBoxes);
+    },
+    // Toggle the viewBox region outlines + scale labels (enable while the
+    // distance tool is active).
+    setShowViewBoxes(show: boolean) {
+      overlay?.setShowViewBoxes(show);
+    },
+    // Provide the image's pixels-per-mm (from metadata, e.g. PNG PixelsPerMm)
+    // so distance measurements convert to real-world mm. See
+    // docs/distance-viewbox.md.
+    setPixelsPerMm(ppmm: number | null) {
+      overlay?.setPixelsPerMm(ppmm);
     },
   };
 }
