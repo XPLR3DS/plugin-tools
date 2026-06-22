@@ -6,19 +6,6 @@
 // start point falls inside such a region is converted from image pixels to
 // real-world millimetres. See docs/distance-viewbox.md for the full rationale.
 
-const MM_PER_INCH = 25.4;
-const DEFAULT_DPI = 96;
-
-/**
- * Pixels per millimetre on the drawing sheet. The pixel→mm conversion divides
- * by this before applying the 1:N drawing scale.
- *
- * Default assumes a 96-DPI export (96 / 25.4 ≈ 3.7795 px/mm, i.e. ≈ 0.2646
- * mm/px), preserving the previous hard-coded behaviour until a real value is
- * derived from image metadata.
- */
-export const DEFAULT_PIXELS_PER_MM = DEFAULT_DPI / MM_PER_INCH;
-
 /**
  * Image metadata used to derive the real-world pixel density.
  *
@@ -31,24 +18,6 @@ export interface ImageMetadata {
   dpi?: number;
   [key: string]: unknown;
 }
-
-/**
- * Derive pixels-per-mm from image metadata.
- *
- * PLACEHOLDER: currently only handles an explicit `dpi`
- * (ppmm = dpi / 25.4 → dots per inch to dots per mm) and otherwise falls back
- * to {@link DEFAULT_PIXELS_PER_MM}. Replace/extend this with the real
- * derivation once the metadata format is finalised.
- */
-export const metadataToPixelsPerMm = (
-  metadata?: ImageMetadata | null
-): number => {
-  if (metadata?.dpi && metadata.dpi > 0) {
-    return metadata.dpi / MM_PER_INCH;
-  }
-  // TODO: derive from other metadata (physical dimensions / pixel spacing).
-  return DEFAULT_PIXELS_PER_MM;
-};
 
 export interface ViewBoxPosition {
   x: number;
@@ -108,7 +77,7 @@ export const getViewBoxAtPoint = (
 export const pixelsToMm = (
   pixels: number,
   scale: number,
-  ppmm: number = DEFAULT_PIXELS_PER_MM
+  ppmm: number 
 ): number | null => {
   if (!scale || scale <= 0) return null;
   if (!ppmm || ppmm <= 0) return null;
@@ -138,7 +107,7 @@ export const measurementBodyFor = (
   startX: number,
   startY: number,
   lengthPx: number,
-  ppmm: number = DEFAULT_PIXELS_PER_MM
+  ppmm: number
 ): MeasurementBody[] => {
   const vb = getViewBoxAtPoint(viewBoxes, startX, startY);
   if (!vb) return [];
