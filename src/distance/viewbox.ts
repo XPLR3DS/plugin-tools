@@ -1,10 +1,10 @@
 // Drawing-scale "viewBox" support for the distance tool.
 //
 // NOTE: a "viewBox" here is NOT the SVG viewBox attribute. It is a domain
-// concept ported from the host app's old React DistanceTool: a rectangular
+// concept ported from the host React DistanceTool: a rectangular
 // region of the drawing that carries a 1:N drawing scale. A measurement whose
 // start point falls inside such a region is converted from image pixels to
-// real-world millimetres. See docs/distance-viewbox.md for the full rationale.
+// real-world millimetres.
 
 export interface ViewBoxPosition {
   x: number;
