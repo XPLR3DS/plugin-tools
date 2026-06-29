@@ -3,17 +3,6 @@
   import { getMaskDimensions } from '@annotorious/annotorious';
   import type { Rectangle, Shape, Transform } from '@annotorious/annotorious';
 
-  /**
-   * Shared editor for ShapeType.RECTANGLE — supersedes Annotorious's built-in
-   * rectangle editor (registerShapeEditor is one-per-ShapeType) so it must
-   * replicate native rectangle resize/move behaviour for the native 'rectangle'
-   * tool, while also serving the 'text' tool. Geometry editing (drag to move /
-   * resize) is identical for both — the only difference is that text content
-   * (`bodies[].value`) is rendered/edited by the supplementary overlay layer
-   * based on `shape.properties?.toolType === 'text'`, since Annotorious's
-   * native renderer cannot paint text on the canvas.
-   */
-
   /** Props */
   export let shape: Rectangle;
   export let computedStyle: string | undefined;
@@ -22,7 +11,7 @@
   export let svgEl: SVGSVGElement;
 
   $: geom = shape.geometry;
-
+  $: toolType = (shape as any)?.properties?.toolType;
   const editor = (rectangle: Shape, handle: string, delta: [number, number]) => {
     const initialBounds = rectangle.geometry.bounds;
 
@@ -32,41 +21,16 @@
     const [dx, dy] = delta;
 
     if (handle === 'SHAPE') {
-      x0 += dx;
-      x1 += dx;
-      y0 += dy;
-      y1 += dy;
+      x0 += dx; x1 += dx;
+      y0 += dy; y1 += dy;
     } else {
       switch (handle) {
-        case 'TOP':
-        case 'TOP_LEFT':
-        case 'TOP_RIGHT': {
-          y0 += dy;
-          break;
-        }
-
-        case 'BOTTOM':
-        case 'BOTTOM_LEFT':
-        case 'BOTTOM_RIGHT': {
-          y1 += dy;
-          break;
-        }
+        case 'TOP': case 'TOP_LEFT': case 'TOP_RIGHT': { y0 += dy; break; }
+        case 'BOTTOM': case 'BOTTOM_LEFT': case 'BOTTOM_RIGHT': { y1 += dy; break; }
       }
-
       switch (handle) {
-        case 'LEFT':
-        case 'TOP_LEFT':
-        case 'BOTTOM_LEFT': {
-          x0 += dx;
-          break;
-        }
-
-        case 'RIGHT':
-        case 'TOP_RIGHT':
-        case 'BOTTOM_RIGHT': {
-          x1 += dx;
-          break;
-        }
+        case 'LEFT': case 'TOP_LEFT': case 'BOTTOM_LEFT': { x0 += dx; break; }
+        case 'RIGHT': case 'TOP_RIGHT': case 'BOTTOM_RIGHT': { x1 += dx; break; }
       }
     }
 
@@ -77,103 +41,59 @@
 
     return {
       ...rectangle,
-      geometry: {
-        x, y, w, h,
-        bounds: {
-          minX: x,
-          minY: y,
-          maxX: x + w,
-          maxY: y + h
-        }
-      }
+      geometry: { x, y, w, h, bounds: { minX: x, minY: y, maxX: x + w, maxY: y + h } }
     };
   }
 
   $: mask = getMaskDimensions(geom.bounds, 2 / viewportScale);
-
   const maskId = `rect-mask-${Math.random().toString(36).substring(2, 12)}`;
 </script>
 
-<Editor
-  shape={shape}
-  transform={transform}
-  editor={editor}
-  svgEl={svgEl}
-  on:grab
-  on:change
-  on:release
-  let:grab={grab}>
+{#if toolType !== 'text'}
+  <Editor
+    shape={shape}
+    transform={transform}
+    editor={editor}
+    svgEl={svgEl}
+    on:grab
+    on:change
+    on:release
+    let:grab={grab}>
 
-  <defs>
-    <mask id={maskId} class="a9s-rectangle-editor-mask">
-      <rect class="rect-mask-bg" x={mask.x} y={mask.y} width={mask.w} height={mask.h} />
-      <rect class="rect-mask-fg" x={geom.x} y={geom.y} width={geom.w} height={geom.h} />
-    </mask>
-  </defs>
+    <defs>
+      <mask id={maskId} class="a9s-rectangle-editor-mask">
+        <rect class="rect-mask-bg" x={mask.x} y={mask.y} width={mask.w} height={mask.h} />
+        <rect class="rect-mask-fg" x={geom.x} y={geom.y} width={geom.w} height={geom.h} />
+      </mask>
+    </defs>
 
-  <rect
-    class="a9s-outer"
-    mask={`url(#${maskId})`}
-    on:pointerdown={grab('SHAPE')}
-    x={geom.x} y={geom.y} width={geom.w} height={geom.h} />
+    <rect class="a9s-outer" mask={`url(#${maskId})`} on:pointerdown={grab('SHAPE')}
+      x={geom.x} y={geom.y} width={geom.w} height={geom.h} />
 
-  <rect
-    class="a9s-inner a9s-shape-handle"
-    style={computedStyle}
-    on:pointerdown={grab('SHAPE')}
-    x={geom.x} y={geom.y} width={geom.w} height={geom.h} />
+    <rect class="a9s-inner a9s-shape-handle" style={computedStyle} on:pointerdown={grab('SHAPE')}
+      x={geom.x} y={geom.y} width={geom.w} height={geom.h} />
 
-  <rect
-    class="a9s-edge-handle a9s-edge-handle-top"
-    on:pointerdown={grab('TOP')}
-    x={geom.x} y={geom.y} height={1} width={geom.w} />
+    <rect class="a9s-edge-handle a9s-edge-handle-top" on:pointerdown={grab('TOP')}
+      x={geom.x} y={geom.y} height={1} width={geom.w} />
+    <rect class="a9s-edge-handle a9s-edge-handle-right" on:pointerdown={grab('RIGHT')}
+      x={geom.x + geom.w} y={geom.y} height={geom.h} width={1} />
+    <rect class="a9s-edge-handle a9s-edge-handle-bottom" on:pointerdown={grab('BOTTOM')}
+      x={geom.x} y={geom.y + geom.h} height={1} width={geom.w} />
+    <rect class="a9s-edge-handle a9s-edge-handle-left" on:pointerdown={grab('LEFT')}
+      x={geom.x} y={geom.y} height={geom.h} width={1} />
 
-  <rect
-    class="a9s-edge-handle a9s-edge-handle-right"
-    on:pointerdown={grab('RIGHT')}
-    x={geom.x + geom.w} y={geom.y} height={geom.h} width={1}/>
-
-  <rect
-    class="a9s-edge-handle a9s-edge-handle-bottom"
-    on:pointerdown={grab('BOTTOM')}
-    x={geom.x} y={geom.y + geom.h} height={1} width={geom.w} />
-
-  <rect
-    class="a9s-edge-handle a9s-edge-handle-left"
-    on:pointerdown={grab('LEFT')}
-    x={geom.x} y={geom.y} height={geom.h} width={1} />
-
-  <Handle
-    class="a9s-corner-handle-topleft"
-    on:pointerdown={grab('TOP_LEFT')}
-    x={geom.x} y={geom.y}
-    scale={viewportScale} />
-
-  <Handle
-    class="a9s-corner-handle-topright"
-    on:pointerdown={grab('TOP_RIGHT')}
-    x={geom.x + geom.w} y={geom.y}
-    scale={viewportScale} />
-
-  <Handle
-    class="a9s-corner-handle-bottomright"
-    on:pointerdown={grab('BOTTOM_RIGHT')}
-    x={geom.x + geom.w} y={geom.y + geom.h}
-    scale={viewportScale} />
-
-  <Handle
-    class="a9s-corner-handle-bottomleft"
-    on:pointerdown={grab('BOTTOM_LEFT')}
-    x={geom.x} y={geom.y + geom.h}
-    scale={viewportScale} />
-</Editor>
+    <Handle class="a9s-corner-handle-topleft"     on:pointerdown={grab('TOP_LEFT')}
+      x={geom.x}            y={geom.y}            scale={viewportScale} />
+    <Handle class="a9s-corner-handle-topright"    on:pointerdown={grab('TOP_RIGHT')}
+      x={geom.x + geom.w}   y={geom.y}            scale={viewportScale} />
+    <Handle class="a9s-corner-handle-bottomright" on:pointerdown={grab('BOTTOM_RIGHT')}
+      x={geom.x + geom.w}   y={geom.y + geom.h}   scale={viewportScale} />
+    <Handle class="a9s-corner-handle-bottomleft"  on:pointerdown={grab('BOTTOM_LEFT')}
+      x={geom.x}            y={geom.y + geom.h}   scale={viewportScale} />
+  </Editor>
+{/if}
 
 <style>
-  mask.a9s-rectangle-editor-mask > rect.rect-mask-bg {
-    fill: #fff;
-  }
-
-  mask.a9s-rectangle-editor-mask > rect.rect-mask-fg {
-    fill: #000;
-  }
+  mask.a9s-rectangle-editor-mask > rect.rect-mask-bg { fill: #fff; }
+  mask.a9s-rectangle-editor-mask > rect.rect-mask-fg { fill: #000; }
 </style>
