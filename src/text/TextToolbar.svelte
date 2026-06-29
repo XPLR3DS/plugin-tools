@@ -12,13 +12,13 @@
   }>();
 
   const BG_COLORS = [
-    { value: 'transparent', label: 'None' },
-    { value: '#ffff00', label: 'Yellow' },
-    { value: '#00ff00', label: 'Green' },
-    { value: '#00ffff', label: 'Cyan' },
-    { value: '#ff00ff', label: 'Magenta' },
-    { value: '#ffffff', label: 'White' },
-    { value: '#000000', label: 'Black' },
+    { value: 'transparent', label: 'None',    textColor: null },
+    { value: '#ffff00',     label: 'Yellow',  textColor: '#000000' },
+    { value: '#00ff00',     label: 'Green',   textColor: '#000000' },
+    { value: '#00ffff',     label: 'Cyan',    textColor: '#000000' },
+    { value: '#ff00ff',     label: 'Magenta', textColor: '#ffffff' },
+    { value: '#ffffff',     label: 'White',   textColor: '#000000' },
+    { value: '#000000',     label: 'Black',   textColor: '#ffffff' },
   ];
 
   let showBgPicker = false;
@@ -68,10 +68,11 @@
   <!-- Background colour -->
   <div class="tb-color-wrap">
     <button class="tb-btn tb-color-btn" title="Highlight colour" on:click={() => showBgPicker = !showBgPicker}>
-      <span class="tb-color-letter">A</span>
       <span
-        class="tb-color-swatch"
-        style="background:{style.bgColor !== 'transparent' ? style.bgColor : 'transparent'}; border-color:{style.bgColor !== 'transparent' ? style.bgColor : '#AAAFC3'};" />
+        class="tb-color-letter"
+        style="background:{style.bgColor && style.bgColor !== 'transparent' ? style.bgColor : '#AAAFC3'}; color:{BG_COLORS.find(c => c.value === style.bgColor)?.textColor ?? '#ffffff'};">
+        A
+      </span>
     </button>
 
     {#if showBgPicker}
@@ -143,21 +144,14 @@
   /* Colour button */
   .tb-color-wrap { position: relative; }
 
-  .tb-color-btn {
-    width: auto;
-    padding: 2px 3px;
-    flex-direction: column;
-    gap: 1px;
-  }
+  .tb-color-btn { width: auto; padding: 2px 3px; }
 
-  .tb-color-letter { font-size: 12px; font-weight: bold; line-height: 1; }
-
-  .tb-color-swatch {
-    display: block;
-    width: 14px;
-    height: 3px;
-    border-radius: 1px;
-    border: 1px solid;
+  .tb-color-letter {
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1;
+    padding: 0 4px;
+    border-radius: 3px;
   }
 
   .tb-color-picker {
