@@ -193,14 +193,7 @@
 
     const sel = selected[0];
     const isText = sel?.target?.selector?.properties?.toolType === 'text';
-    if (isText) {
-      // Immediately cancel Annotorious's native selection for text annotations.
-      // The built-in editor (which we cannot override due to module bundling)
-      // would otherwise mount and show resize handles. cancelSelected removes
-      // it from editableAnnotations before the browser paints.
-      anno.cancelSelected();
-      return;
-    }
+    if (isText) return;
     if (editingId) commitEdit();
   };
 
@@ -504,6 +497,8 @@
       {#if editingId !== id}
         <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
         <g
+          data-annotation-type="TEXT"
+          data-annotation-id={id}
           style="pointer-events:auto; cursor:pointer;"
           on:mousedown={(e) => handleTextMouseDown(e, id, rawPt)}
           on:click={() => startEditing(id)}>
