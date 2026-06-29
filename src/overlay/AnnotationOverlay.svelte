@@ -178,10 +178,8 @@
     const annotation = allAnnotations.find(a => a.id === annotationId) as any;
     if (!annotation) return;
     if (editingId && editingId !== annotationId) commitEdit();
-    // Tell Annotorious this annotation is selected so the toolbar Delete button
-    // works (deleteSelected checks selectedNativeAnnotation which is set via the
-    // selectionChanged event that setSelected fires).
-    try { (anno.state as any).selection.setSelected(annotationId); } catch {}
+    // Do NOT call setSelected — it triggers Annotorious's native selection UI
+    // (rectangle + handles) which clashes with the overlay's own editing UI.
     editingId = annotationId;
     editingText = localTexts[annotationId] ?? annotation.bodies?.[0]?.value ?? '';
     editingStyle = getStyle(annotation.target.selector);
@@ -195,20 +193,25 @@
 
     const sel = selected[0];
     const isText = sel?.target?.selector?.properties?.toolType === 'text';
-    // Text selection is handled by overlay click handlers; only commit if a
-    // non-text annotation was selected while we were editing.
-    if (!isText && editingId) commitEdit();
+    if (isText) return;
+    if (editingId) commitEdit();
   };
 
   const commitEdit = () => {
     if (!editingId) return;
     const committingId = editingId;
     const committingText = editingText;
+    editingId = null;
+    editingText = '';
+
     const annotation = allAnnotations.find(a => a.id === committingId) as any;
     if (annotation) {
-      const bodies = committingText.trim()
-        ? [{ type: 'TextualBody', value: committingText, purpose: 'commenting' }]
-        : [];
+      if (!committingText.trim()) {
+        deleteAnnotation(committingId);
+        return;
+      }
+
+      const bodies = [{ type: 'TextualBody', value: committingText, purpose: 'commenting' }];
 
       // Measure exact text width via canvas (matches old TextTool behaviour)
       const fsImage = (editingStyle.fontSize || DEFAULT_TEXT_STYLE.fontSize) / Math.max(viewportScale, 0.001);
@@ -222,8 +225,6 @@
       const minY = anchor.y - fsImage;
       const maxX = anchor.x + textW + anchorGapImg;
       const maxY = anchor.y + fsImage * 0.2;
-      // x/y/w/h match the bounds so that Annotorious's spatialTree.getAt()
-      // finds this annotation when the user clicks on the rendered rectangle.
       const newGeometry = {
         bounds: { minX, minY, maxX, maxY },
         x: minX, y: minY, w: maxX - minX, h: maxY - minY,
@@ -246,15 +247,8 @@
         },
       });
 
-      if (committingText.trim()) {
-        localTexts = { ...localTexts, [committingId]: committingText };
-      } else {
-        const { [committingId]: _removed, ...rest } = localTexts;
-        localTexts = rest;
-      }
+      localTexts = { ...localTexts, [committingId]: committingText };
     }
-    editingId = null;
-    editingText = '';
   };
 
   const applyStyleChange = (annotationId: string, newStyle: TextStyle) => {
@@ -409,13 +403,9 @@
     {#each svgAnnotations as ann (ann.id)}
       {#if ann.toolType === 'arrow'}
         <g data-annotation-type="ARROW" data-annotation-id={ann.id}>
-          <polyline
+          <polygon
             points={ann.arrowheadStr}
-            fill="none"
-            stroke={strokeColor}
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
+            style={`fill:${strokeColor};stroke:none`}
             vector-effect="non-scaling-stroke" />
         </g>
       {:else if ann.toolType === 'distance'}
@@ -507,6 +497,8 @@
       {#if editingId !== id}
         <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
         <g
+          data-annotation-type="TEXT"
+          data-annotation-id={id}
           style="pointer-events:auto; cursor:pointer;"
           on:mousedown={(e) => handleTextMouseDown(e, id, rawPt)}
           on:click={() => startEditing(id)}>
@@ -527,7 +519,7 @@
       <!-- Selection / editing box — shown when editing OR when Annotorious has
            this annotation selected.  Matches old React TextTool exactly:
            dashed #888 rect + #ff00ba circles at left/right centre edges.       -->
-      {#if editingId === id || selectedIds.includes(id)}
+      {#if editingId === id}
         {@const boxText    = editingId === id ? editingText : displayText}
         {@const textW      = measureTextWidth(boxText || 'Type...', fs)}
         {@const textH      = fs * 1.2}
