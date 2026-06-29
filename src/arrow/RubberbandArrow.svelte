@@ -135,9 +135,9 @@
 
     <!-- Live preview of the arrowhead while drawing -->
     {#if x1 !== x2 || y1 !== y2}
-      <polyline
+      <polygon
         class="a9s-inner"
-        fill="none"
+        style="fill:currentColor !important; stroke:none !important;"
         points={(() => {
           const angle = Math.atan2(y2 - y1, x2 - x1);
           const headLength = 12;

@@ -30,10 +30,6 @@ export const mountPlugin = <
   anno.registerDrawingTool('distance', RubberbandDistance as typeof SvelteComponent);
   anno.registerShapeEditor(ShapeType.POLYLINE, PathEditor as typeof SvelteComponent);
 
-  // RECTANGLE is shared by the native 'rectangle' tool and 'text'. This
-  // RectangleEditor supersedes Annotorious's built-in rectangle editor —
-  // it replicates native resize/move behaviour and additionally discriminates
-  // on `properties.toolType === 'text'`
   anno.registerDrawingTool('text', RubberbandText as typeof SvelteComponent);
   anno.registerShapeEditor(ShapeType.RECTANGLE, RectangleEditor as typeof SvelteComponent);
 
