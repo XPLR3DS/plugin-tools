@@ -76,5 +76,12 @@ export const mountPlugin = <
     setDefaultStyle(style: DefaultShapeStyle) {
       overlay?.setDefaultStyle(style);
     },
+    // Ids of annotations the host has hidden (per-annotation eye toggle or a
+    // hidden layer). Arrows, distance labels and text are painted by the
+    // overlay, so the host's style-based hiding cannot reach them — feed the
+    // hidden set here whenever visibility changes.
+    setHiddenIds(ids: string[]) {
+      overlay?.setHiddenIds(ids);
+    },
   };
 }

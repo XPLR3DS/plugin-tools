@@ -42,5 +42,11 @@ export const mountOverlay = <
     setDefaultStyle(defaultStyle: DefaultShapeStyle) {
       (overlay as any).$set({ defaultStyle });
     },
+      // Ids of annotations the host has hidden (eye toggles / hidden layers).
+      // Required for arrow/distance/text: the overlay renders those itself,
+      // so Annotorious's setStyle-based hiding never reaches them.
+    setHiddenIds(hiddenIds: string[]) {
+      (overlay as any).$set({ hiddenIds });
+    },
   };
 };

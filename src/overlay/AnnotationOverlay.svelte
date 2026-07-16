@@ -36,6 +36,14 @@
   // shape toolbar shows these for annotations without per-annotation
   // overrides. Fed in via the mountPlugin controller's setDefaultStyle().
   export let defaultStyle: DefaultShapeStyle = FALLBACK_DEFAULT_STYLE;
+  // Ids of annotations the host has hidden (per-annotation eye toggle or a
+  // hidden layer). The overlay renders arrows, distance labels and text
+  // itself, so Annotorious's setStyle-based hiding can't reach them — the
+  // host must feed the hidden set in via the mountPlugin controller's
+  // setHiddenIds().
+  export let hiddenIds: string[] = [];
+
+  $: hiddenIdSet = new Set(hiddenIds);
 
   type ToolShape = Shape & {
     properties?: {
@@ -120,6 +128,7 @@
     | DistanceAnnotation;
 
   $: svgAnnotations = allAnnotations.reduce<SvgAnnotation[]>((acc, a) => {
+    if (hiddenIdSet.has(a.id)) return acc;
     const selector = a.target?.selector as ToolShape | undefined;
     const toolType = selector?.properties?.toolType;
     if (!selector) return acc;
@@ -194,6 +203,7 @@
   }, []);
 
   $: textAnnotations = allAnnotations
+    .filter(a => !hiddenIdSet.has(a.id))
     .map(a => ({
       id: a.id,
       annotation: a,
