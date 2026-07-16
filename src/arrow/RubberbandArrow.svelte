@@ -135,12 +135,14 @@
 
     <!-- Live preview of the arrowhead while drawing -->
     {#if x1 !== x2 || y1 !== y2}
-      <polyline
+      <polygon
         class="a9s-inner"
-        fill="none"
+        style="fill:currentColor !important; stroke:none !important;"
         points={(() => {
           const angle = Math.atan2(y2 - y1, x2 - x1);
-          const headLength = 12;
+          // Constant screen-size head — the rubber-band stroke is
+          // non-scaling, so the preview head must scale the same way.
+          const headLength = 12 / Math.max(viewportScale, 0.001);
           const hx1 = x2 - headLength * Math.cos(angle - Math.PI / 6);
           const hy1 = y2 - headLength * Math.sin(angle - Math.PI / 6);
           const hx2 = x2 - headLength * Math.cos(angle + Math.PI / 6);
