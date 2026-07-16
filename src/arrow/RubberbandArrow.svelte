@@ -125,24 +125,30 @@
   class="a9s-annotation a9s-rubberband">
 
   {#if origin && cursor}
+    <!-- Preview head from the shared arrowHeadLength helper (screen-constant,
+         proportional to the ~2px rubber-band stroke), so the preview matches
+         the placed arrow. The shaft is shortened by the head length so it
+         never pokes out of the head. -->
+    {@const angle = Math.atan2(y2 - y1, x2 - x1)}
+    {@const headLength = arrowHeadLength(2, viewportScale, Math.hypot(x2 - x1, y2 - y1))}
+    {@const hasHead = x1 !== x2 || y1 !== y2}
+    {@const bx = hasHead ? x2 - headLength * Math.cos(angle) : x2}
+    {@const by = hasHead ? y2 - headLength * Math.sin(angle) : y2}
+
     <line
       class="a9s-outer"
-      x1={x1} y1={y1} x2={x2} y2={y2} />
+      x1={x1} y1={y1} x2={bx} y2={by} />
 
     <line
       class="a9s-inner"
-      x1={x1} y1={y1} x2={x2} y2={y2} />
+      x1={x1} y1={y1} x2={bx} y2={by} />
 
     <!-- Live preview of the arrowhead while drawing -->
-    {#if x1 !== x2 || y1 !== y2}
+    {#if hasHead}
       <polygon
         class="a9s-inner"
         style="fill:currentColor !important; stroke:none !important;"
         points={(() => {
-          const angle = Math.atan2(y2 - y1, x2 - x1);
-          // Constant screen-size head — the rubber-band stroke is
-          // non-scaling, so the preview head must scale the same way.
-          const headLength = 12 / Math.max(viewportScale, 0.001);
           const hx1 = x2 - headLength * Math.cos(angle - Math.PI / 6);
           const hy1 = y2 - headLength * Math.sin(angle - Math.PI / 6);
           const hx2 = x2 - headLength * Math.cos(angle + Math.PI / 6);

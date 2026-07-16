@@ -3,6 +3,7 @@
   import type { ImageAnnotator, ImageAnnotation, Shape, PolylinePoint } from '@annotorious/annotorious';
   import TextToolbar from '../text/TextToolbar.svelte';
   import { type TextStyle, DEFAULT_TEXT_STYLE } from '../text/textStyle';
+  import { arrowHeadLength } from '../arrow/arrowGeometry';
   import ShapeToolbar from '../shape/ShapeToolbar.svelte';
   import {
     type ShapeStyle,
@@ -106,7 +107,16 @@
   };
 
   type SvgAnnotation =
-    | { id: string; toolType: 'arrow'; arrowheadStr: string; stroke: string; width: number }
+    | {
+        id: string; toolType: 'arrow'; arrowheadStr: string;
+        // Shaft endpoints: starts at the arrow origin, ends at the BASE of
+        // the head (pulled back by hl from the tip) so the stroke can never
+        // poke out of the head. The Annotorious-rendered LINE shape is kept
+        // invisible by the host (like 'distance') — the overlay draws both
+        // the shaft and the head.
+        x1: number; y1: number; x2: number; y2: number;
+        stroke: string; width: number;
+      }
     | DistanceAnnotation;
 
   $: svgAnnotations = allAnnotations.reduce<SvgAnnotation[]>((acc, a) => {
@@ -128,14 +138,15 @@
       const [x1, y1] = pts[0];
       const [x2, y2] = pts[1];
       const angle = Math.atan2(y2 - y1, x2 - x1);
-      // Arrowhead length in image px, derived so it stays CONSTANT ON SCREEN.
-      // The shaft is rendered with vector-effect:non-scaling-stroke (constant
-      // screen width at any zoom), so an image-space head shrinks into a
-      // blocky stub when zoomed out. Scale by 1/viewportScale to match the
-      // shaft, and by strokeWidth so thicker arrows get bigger heads
-      // (12.5 × default width 2 = master's original 25px head at zoom 1).
-      const hl =
-        (12.5 * (ownStyle.strokeWidth ?? 2)) / Math.max(viewportScale, 0.001);
+
+      // Head length from the shared helper (screen-constant, proportional
+      // to the stroke) — same maths as LineEditor and RubberbandArrow.
+      const hl = arrowHeadLength(
+        ownStyle.strokeWidth ?? 2,
+        viewportScale,
+        Math.hypot(x2 - x1, y2 - y1),
+      );
+
       const arrowheadStr = [
         `${x2 - hl * Math.cos(angle - Math.PI / 6)},${y2 - hl * Math.sin(angle - Math.PI / 6)}`,
         `${x2},${y2}`,
@@ -143,6 +154,10 @@
       ].join(' ');
       acc.push({
         id: a.id, toolType: 'arrow', arrowheadStr,
+        x1, y1,
+        // Shaft ends exactly hl before the tip (the head's base).
+        x2: x2 - hl/2 * Math.cos(angle),
+        y2: y2 - hl/2 * Math.sin(angle),
         stroke: ownStyle?.strokeColor ?? strokeColor,
         width: ownStyle?.strokeWidth ?? 2,
       });
@@ -573,6 +588,13 @@
     {#each svgAnnotations as ann (ann.id)}
       {#if ann.toolType === 'arrow'}
         <g data-annotation-type="ARROW" data-annotation-id={ann.id}>
+          <line
+            x1={ann.x1} y1={ann.y1}
+            x2={ann.x2} y2={ann.y2}
+            stroke={ann.stroke}
+            stroke-width={ann.width}
+            stroke-linecap="butt"
+            vector-effect="non-scaling-stroke" />
           <polygon
             points={ann.arrowheadStr}
             style={`fill:${ann.stroke};stroke:none`}
