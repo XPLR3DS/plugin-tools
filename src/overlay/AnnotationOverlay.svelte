@@ -3,6 +3,12 @@
   import type { ImageAnnotator, ImageAnnotation, Shape, PolylinePoint } from '@annotorious/annotorious';
   import TextToolbar from '../text/TextToolbar.svelte';
   import { type TextStyle, DEFAULT_TEXT_STYLE } from '../text/textStyle';
+  import ShapeToolbar from '../shape/ShapeToolbar.svelte';
+  import {
+    type ShapeStyle,
+    type DefaultShapeStyle,
+    FALLBACK_DEFAULT_STYLE,
+  } from '../shape/shapeStyle';
   import {
     type ViewBox,
     getViewBoxAtPoint,
@@ -25,11 +31,16 @@
   // setPixelsPerMm(). Used to convert a measured pixel distance to real-world
   // mm (pixelsToMm divides by this, then multiplies by the viewBox scale).
   export let pixelsPerMm: number | null = null;
+  // Global drawing defaults (host app's current stroke/fill settings). The
+  // shape toolbar shows these for annotations without per-annotation
+  // overrides. Fed in via the mountPlugin controller's setDefaultStyle().
+  export let defaultStyle: DefaultShapeStyle = FALLBACK_DEFAULT_STYLE;
 
   type ToolShape = Shape & {
     properties?: {
       toolType?: string;
       textStyle?: Partial<TextStyle>;
+      style?: ShapeStyle;
     };
   };
 
@@ -91,10 +102,11 @@
     mx: number; my: number;
     px: number; py: number;
     length: string;
+    stroke: string; width: number;
   };
 
   type SvgAnnotation =
-    | { id: string; toolType: 'arrow'; arrowheadStr: string }
+    | { id: string; toolType: 'arrow'; arrowheadStr: string; stroke: string; width: number }
     | DistanceAnnotation;
 
   $: svgAnnotations = allAnnotations.reduce<SvgAnnotation[]>((acc, a) => {
@@ -102,18 +114,38 @@
     const toolType = selector?.properties?.toolType;
     if (!selector) return acc;
 
+    // Per-annotation style overrides (set via the shape toolbar) win over
+    // legacy top-level fields (host apps may flatten persisted styles onto
+    // the annotation), which win over the host's global stroke colour.
+    const legacy = a as unknown as { strokeColor?: string; strokeWidth?: number };
+    const ownStyle = {
+      strokeColor: selector.properties?.style?.strokeColor ?? legacy.strokeColor,
+      strokeWidth: selector.properties?.style?.strokeWidth ?? legacy.strokeWidth,
+    };
+
     if (toolType === 'arrow') {
       const pts = selector.geometry.points as unknown as [number, number][];
       const [x1, y1] = pts[0];
       const [x2, y2] = pts[1];
       const angle = Math.atan2(y2 - y1, x2 - x1);
-      const hl = 25;
+      // Arrowhead length in image px, derived so it stays CONSTANT ON SCREEN.
+      // The shaft is rendered with vector-effect:non-scaling-stroke (constant
+      // screen width at any zoom), so an image-space head shrinks into a
+      // blocky stub when zoomed out. Scale by 1/viewportScale to match the
+      // shaft, and by strokeWidth so thicker arrows get bigger heads
+      // (12.5 × default width 2 = master's original 25px head at zoom 1).
+      const hl =
+        (12.5 * (ownStyle.strokeWidth ?? 2)) / Math.max(viewportScale, 0.001);
       const arrowheadStr = [
         `${x2 - hl * Math.cos(angle - Math.PI / 6)},${y2 - hl * Math.sin(angle - Math.PI / 6)}`,
         `${x2},${y2}`,
         `${x2 - hl * Math.cos(angle + Math.PI / 6)},${y2 - hl * Math.sin(angle + Math.PI / 6)}`,
       ].join(' ');
-      acc.push({ id: a.id, toolType: 'arrow', arrowheadStr });
+      acc.push({
+        id: a.id, toolType: 'arrow', arrowheadStr,
+        stroke: ownStyle?.strokeColor ?? strokeColor,
+        width: ownStyle?.strokeWidth ?? 2,
+      });
 
     } else if (toolType === 'distance') {
       const pts = (selector.geometry.points as unknown as PolylinePoint[]).map(p => p.point) as [number, number][];
@@ -139,6 +171,8 @@
         mx: (x1 + x2) / 2, my: (y1 + y2) / 2,
         px, py,
         length,
+        stroke: ownStyle?.strokeColor ?? strokeColor,
+        width: ownStyle?.strokeWidth ?? 1.5,
       });
     }
     return acc;
@@ -211,10 +245,8 @@
     const annotation = allAnnotations.find(a => a.id === annotationId) as any;
     if (!annotation) return;
     if (editingId && editingId !== annotationId) commitEdit();
-    // Tell Annotorious this annotation is selected so the toolbar Delete button
-    // works (deleteSelected checks selectedNativeAnnotation which is set via the
-    // selectionChanged event that setSelected fires).
-    try { (anno.state as any).selection.setSelected(annotationId); } catch {}
+    // Do NOT call setSelected — it triggers Annotorious's native selection UI
+    // (rectangle + handles) which clashes with the overlay's own editing UI.
     editingId = annotationId;
     editingText = localTexts[annotationId] ?? annotation.bodies?.[0]?.value ?? '';
     editingStyle = getStyle(annotation.target.selector);
@@ -228,20 +260,25 @@
 
     const sel = selected[0];
     const isText = sel?.target?.selector?.properties?.toolType === 'text';
-    // Text selection is handled by overlay click handlers; only commit if a
-    // non-text annotation was selected while we were editing.
-    if (!isText && editingId) commitEdit();
+    if (isText) return;
+    if (editingId) commitEdit();
   };
 
   const commitEdit = () => {
     if (!editingId) return;
     const committingId = editingId;
     const committingText = editingText;
+    editingId = null;
+    editingText = '';
+
     const annotation = allAnnotations.find(a => a.id === committingId) as any;
     if (annotation) {
-      const bodies = committingText.trim()
-        ? [{ type: 'TextualBody', value: committingText, purpose: 'commenting' }]
-        : [];
+      if (!committingText.trim()) {
+        deleteAnnotation(committingId);
+        return;
+      }
+
+      const bodies = [{ type: 'TextualBody', value: committingText, purpose: 'commenting' }];
 
       // Measure exact text width via canvas (matches old TextTool behaviour)
       const fsImage = (editingStyle.fontSize || DEFAULT_TEXT_STYLE.fontSize) / Math.max(viewportScale, 0.001);
@@ -255,8 +292,6 @@
       const minY = anchor.y - fsImage;
       const maxX = anchor.x + textW + anchorGapImg;
       const maxY = anchor.y + fsImage * 0.2;
-      // x/y/w/h match the bounds so that Annotorious's spatialTree.getAt()
-      // finds this annotation when the user clicks on the rendered rectangle.
       const newGeometry = {
         bounds: { minX, minY, maxX, maxY },
         x: minX, y: minY, w: maxX - minX, h: maxY - minY,
@@ -279,15 +314,8 @@
         },
       });
 
-      if (committingText.trim()) {
-        localTexts = { ...localTexts, [committingId]: committingText };
-      } else {
-        const { [committingId]: _removed, ...rest } = localTexts;
-        localTexts = rest;
-      }
+      localTexts = { ...localTexts, [committingId]: committingText };
     }
-    editingId = null;
-    editingText = '';
   };
 
   const applyStyleChange = (annotationId: string, newStyle: TextStyle) => {
@@ -307,6 +335,66 @@
       },
     });
     if (editingId === annotationId) editingStyle = newStyle;
+  };
+
+  // ── Shape toolbar (non-text annotations) ───────────────────────────────────
+
+  // Shape types that can carry a fill. Open polylines (path/distance) and
+  // lines/arrows are stroke-only.
+  const isFillable = (selector: ToolShape | undefined): boolean => {
+    if (!selector) return false;
+    const type = String(selector.type);
+    if (type === 'RECTANGLE' || type === 'POLYGON' || type === 'ELLIPSE' || type === 'MULTIPOLYGON')
+      return true;
+    if (type === 'POLYLINE')
+      return Boolean((selector.geometry as any)?.closed);
+    return false;
+  };
+
+  // The single selected non-text annotation (if any) — drives the shape
+  // toolbar. Text annotations keep their dedicated TextToolbar.
+  $: selectedShape = (() => {
+    if (editingId || selectedIds.length !== 1) return null;
+    const a = allAnnotations.find(x => x.id === selectedIds[0]) as any;
+    const selector = a?.target?.selector as ToolShape | undefined;
+    if (!a || !selector) return null;
+    if (selector.properties?.toolType === 'text') return null;
+
+    const bounds = (selector.geometry as any)?.bounds;
+    if (!bounds) return null;
+
+    const style: Required<ShapeStyle> = {
+      ...defaultStyle,
+      ...(selector.properties?.style || {}),
+    };
+
+    return {
+      id: a.id as string,
+      // Screen position: top-left corner of the shape's bounding box
+      x: bounds.minX * viewportScale,
+      y: bounds.minY * viewportScale,
+      style,
+      fillable: isFillable(selector),
+    };
+  })();
+
+  const applyShapeStyle = (annotationId: string, patch: ShapeStyle) => {
+    const annotation = allAnnotations.find(a => a.id === annotationId) as any;
+    if (!annotation) return;
+    const selector = annotation.target.selector as ToolShape;
+    anno.updateAnnotation({
+      ...annotation,
+      target: {
+        ...annotation.target,
+        selector: {
+          ...selector,
+          properties: {
+            ...selector.properties,
+            style: { ...(selector.properties?.style || {}), ...patch },
+          },
+        },
+      },
+    });
   };
 
   const deleteAnnotation = (annotationId: string) => {
@@ -485,13 +573,9 @@
     {#each svgAnnotations as ann (ann.id)}
       {#if ann.toolType === 'arrow'}
         <g data-annotation-type="ARROW" data-annotation-id={ann.id}>
-          <polyline
+          <polygon
             points={ann.arrowheadStr}
-            fill="none"
-            stroke={strokeColor}
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
+            style={`fill:${ann.stroke};stroke:none`}
             vector-effect="non-scaling-stroke" />
         </g>
       {:else if ann.toolType === 'distance'}
@@ -506,21 +590,21 @@
           <polyline
             points={ann.linePts}
             fill="none"
-            stroke={strokeColor}
-            stroke-width="1.5"
+            stroke={ann.stroke}
+            stroke-width={ann.width}
             stroke-dasharray="{8 / viewportScale} {4 / viewportScale}"
             vector-effect="non-scaling-stroke" />
           <line
             x1={ann.x1 - ann.px * tick} y1={ann.y1 - ann.py * tick}
             x2={ann.x1 + ann.px * tick} y2={ann.y1 + ann.py * tick}
-            stroke={strokeColor}
-            stroke-width="1.5"
+            stroke={ann.stroke}
+            stroke-width={ann.width}
             vector-effect="non-scaling-stroke" />
           <line
             x1={ann.x2 - ann.px * tick} y1={ann.y2 - ann.py * tick}
             x2={ann.x2 + ann.px * tick} y2={ann.y2 + ann.py * tick}
-            stroke={strokeColor}
-            stroke-width="1.5"
+            stroke={ann.stroke}
+            stroke-width={ann.width}
             vector-effect="non-scaling-stroke" />
           <g transform={`translate(${ann.mx + lox}, ${ann.my + loy})`}>
             <rect
@@ -583,6 +667,8 @@
       {#if editingId !== id}
         <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
         <g
+          data-annotation-type="TEXT"
+          data-annotation-id={id}
           style="pointer-events:auto; cursor:pointer;"
           on:mousedown={(e) => handleTextMouseDown(e, id, rawPt)}
           on:click={() => startEditing(id)}>
@@ -603,7 +689,7 @@
       <!-- Selection / editing box — shown when editing OR when Annotorious has
            this annotation selected.  Matches old React TextTool exactly:
            dashed #888 rect + #ff00ba circles at left/right centre edges.       -->
-      {#if editingId === id || selectedIds.includes(id)}
+      {#if editingId === id}
         {@const boxText    = editingId === id ? editingText : displayText}
         {@const textW      = measureTextWidth(boxText || 'Type...', fs)}
         {@const textH      = fs * 1.2}
@@ -652,6 +738,20 @@
     {/if}
   {/each}
 </svg>
+
+<!-- Shape toolbar for selected non-text annotations (screen-pixel space) -->
+{#if selectedShape}
+  {#key selectedShape.id}
+    <ShapeToolbar
+      style={selectedShape.style}
+      defaultStyle={defaultStyle}
+      fillable={selectedShape.fillable}
+      x={selectedShape.x}
+      y={selectedShape.y}
+      on:change={(e) => applyShapeStyle(selectedShape.id, e.detail)}
+      on:delete={() => deleteAnnotation(selectedShape.id)} />
+  {/key}
+{/if}
 
 <!-- Editing input + toolbar (screen-pixel coordinate space) -->
 {#each textAnnotations as { id, selector } (id)}

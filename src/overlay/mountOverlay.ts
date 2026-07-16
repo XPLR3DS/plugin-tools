@@ -2,6 +2,7 @@ import type { Annotation, ImageAnnotation, ImageAnnotator } from '@annotorious/a
 import type { OpenSeadragonAnnotator } from '@annotorious/openseadragon';
 import AnnotationOverlay from './AnnotationOverlay.svelte';
 import type { ViewBox } from '../distance/viewbox';
+import type { DefaultShapeStyle } from '../shape/shapeStyle';
 
 export const mountOverlay = <
   I extends Annotation = ImageAnnotation,
@@ -35,6 +36,11 @@ export const mountOverlay = <
       // Pixels-per-mm (from image metadata) used for the mm conversion.
     setPixelsPerMm(ppmm: number | null) {
       (overlay as any).$set({ pixelsPerMm: ppmm });
+    },
+      // Host app's current global drawing defaults. Shown by the shape
+      // toolbar for annotations without per-annotation style overrides.
+    setDefaultStyle(defaultStyle: DefaultShapeStyle) {
+      (overlay as any).$set({ defaultStyle });
     },
   };
 };
