@@ -4,6 +4,7 @@
   import type { Polyline, PolylineGeometry, PolylinePoint, Shape, Transform } from '@annotorious/annotorious';
   import { getPathMidpoint, togglePolylineCorner } from './pathUtils';
   import BezierHandle from './BezierHandle.svelte';
+  import { DEFAULT_MIN_SCREEN_TOLERANCE } from '../hitArea';
   import { 
     approximateAsPolygon, 
     boundsFromPoints, 
@@ -423,7 +424,18 @@ const onAddPoint = (midpointIdx: number) => async (evt: PointerEvent) => {
   </defs>
 
   <g mask={`url(#${maskId})`}>
-    <rect x={mask.x} y={mask.y} width={mask.w} height={mask.h} class="mask-buffer" /> 
+    <rect x={mask.x} y={mask.y} width={mask.w} height={mask.h} class="mask-buffer" />
+    <!-- Invisible grab buffer: widens the draggable (move-cursor) area to
+         the same screen-space tolerance the click/hover hit test uses (see
+         ../hitArea.ts). Stroke-only so an open path's interior stays
+         non-draggable; inside the masked group so the midpoint handle's
+         cutout still wins. -->
+    <path
+      class="a9s-tools-grab-buffer"
+      on:pointerup={onShapePointerUp}
+      on:pointerdown={grab('SHAPE')}
+      stroke-width={2 * DEFAULT_MIN_SCREEN_TOLERANCE}
+      d={d} />
     <path
       class={`a9s-outer polyline ${shape.geometry.closed ? 'closed' : 'open'}`}
       on:pointerup={onShapePointerUp}
@@ -501,5 +513,16 @@ const onAddPoint = (midpointIdx: number) => async (evt: PointerEvent) => {
 
   .mask-buffer {
     fill: none;
+  }
+
+  path.a9s-tools-grab-buffer {
+    fill: none;
+    stroke: transparent;
+    /* Hit-test the stroke band even though it's unpainted. */
+    pointer-events: stroke;
+    /* stroke-width is set inline (2x the shared screen tolerance);
+       non-scaling-stroke makes it a constant SCREEN width at any zoom. */
+    vector-effect: non-scaling-stroke;
+    cursor: move;
   }
 </style>

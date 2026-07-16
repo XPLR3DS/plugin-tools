@@ -10,32 +10,7 @@ import { mountOverlay } from './overlay';
 import { RubberbandPath, PathEditor } from './path';
 import { RectangleEditor, RubberbandText } from './text';
 import type { DefaultShapeStyle } from './shape/shapeStyle';
-
-/**
- * Enlarges the click/hover hit-test tolerance to 1.5x, measured in SCREEN
- * pixels. Annotorious passes a fixed buffer in IMAGE pixels (2px mouse /
- * 10px touch) to store.getAt(), so on a large drawing displayed zoomed-out
- * the effective tolerance shrinks to a fraction of a screen pixel, making
- * thin elements (line, path, arrow, distance, text) nearly impossible to
- * click. Rescaling by the viewport scale keeps the tolerance constant
- * on-screen; the 1.5 factor grows the clickable area beyond stock behaviour.
- */
-const patchHitTolerance = (anno: any) => {
-  const store = anno?.state?.store;
-  if (!store || typeof store.getAt !== 'function') return;
-
-  const originalGetAt = store.getAt.bind(store);
-  const element: HTMLElement | undefined = anno.element;
-
-  store.getAt = (x: number, y: number, filter?: unknown, buffer: number = 0) => {
-    const img = element?.querySelector('img');
-    const scale = img && (img as HTMLImageElement).naturalWidth
-      ? img.getBoundingClientRect().width / (img as HTMLImageElement).naturalWidth
-      : 1;
-    const adjusted = (buffer * 1.5) / Math.max(scale, 0.001);
-    return originalGetAt(x, y, filter, adjusted);
-  };
-};
+import { patchHitArea } from './hitArea';
 
 export const mountPlugin = <
   I extends Annotation = ImageAnnotation,
@@ -71,8 +46,10 @@ export const mountPlugin = <
   // without resorting to DOM side-channels.
   const overlay = mountOverlay(anno);
 
-  // 1.5x screen-space click tolerance for annotation selection.
-  patchHitTolerance(anno);
+  // Replace the stock click/hover hit test with a buffered, screen-scale-
+  // aware one, so every shape type gets a constant on-screen clickable
+  // margin at any zoom level. See ./hitArea.ts for the full rationale.
+  patchHitArea(anno);
 
   return {
     setStrokeColor(color: string) {

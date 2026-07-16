@@ -2,6 +2,7 @@
   import { Editor, Handle } from '@annotorious/annotorious/src';
   import { boundsFromPoints } from '@annotorious/annotorious';
   import { arrowHeadLength } from '../arrow/arrowGeometry';
+  import { DEFAULT_MIN_SCREEN_TOLERANCE } from '../hitArea';
   import type { Line, LineGeometry, Shape, Transform } from '@annotorious/annotorious';
 
   // Shared editor for ShapeType.LINE — used by both the native 'line' tool and
@@ -81,6 +82,18 @@
   on:release
   let:grab={grab}>
 
+  <!-- Invisible grab buffer: widens the draggable (move-cursor) area to the
+       same screen-space tolerance the click/hover hit test uses (see
+       ../hitArea.ts). vector-effect: non-scaling-stroke keeps the width
+       constant on screen at any zoom. Covers the FULL line (incl. the
+       arrowhead segment the visible editor lines stop short of). -->
+  <line
+    class="a9s-tools-grab-buffer"
+    on:pointerdown={grab('LINE')}
+    stroke-width={2 * DEFAULT_MIN_SCREEN_TOLERANCE}
+    x1={geom.points[0][0]} y1={geom.points[0][1]}
+    x2={geom.points[1][0]} y2={geom.points[1][1]} />
+
   <line
     class="a9s-outer"
     on:pointerdown={grab('LINE')}
@@ -104,3 +117,16 @@
     x={geom.points[1][0]} y={geom.points[1][1]}
     scale={viewportScale} />
 </Editor>
+
+<style>
+  line.a9s-tools-grab-buffer {
+    fill: none;
+    stroke: transparent;
+    /* Hit-test the stroke band even though it's unpainted. */
+    pointer-events: stroke;
+    /* stroke-width is set inline (2x the shared screen tolerance);
+       non-scaling-stroke makes it a constant SCREEN width at any zoom. */
+    vector-effect: non-scaling-stroke;
+    cursor: move;
+  }
+</style>
