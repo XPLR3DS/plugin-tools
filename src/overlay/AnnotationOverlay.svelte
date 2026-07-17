@@ -70,7 +70,7 @@
   let editingId: string | null = null;
   let editingText = '';
   let editingStyle: TextStyle = { ...DEFAULT_TEXT_STYLE };
-  let inputEl: HTMLInputElement | undefined;
+  let inputEl: HTMLTextAreaElement | undefined;
   let selectedIds: string[] = [];
 
   // Committed text cache: updated immediately in commitEdit so the SVG renders
@@ -82,13 +82,101 @@
   let dragOffset: { x: number; y: number } | null = null;
   let draggingPos: Record<string, { x: number; y: number }> = {};
 
-  // Shared canvas for pixel-perfect text width measurement (matching old TextTool)
+  // Drag state for resizing the box via the left/right anchor circles.
+  // Resizing changes the WRAP WIDTH only — font size never changes; text
+  // re-wraps to fit the new width.
+  let resizeState: {
+    id: string;
+    side: 'left' | 'right';
+    leftX: number;       // image-space text left edge (anchor) at drag start
+    rightX: number;      // image-space text right edge at drag start
+    anchorY: number;     // image-space first-line baseline y (unchanged)
+  } | null = null;
+  // Live wrap width while a handle is being dragged (image space).
+  let resizeLiveW: number | null = null;
+
+  // Shared canvas for pixel-perfect text width measurement (matching old TextTool).
+  // Weight/style MUST be included in the font string: bold glyphs are wider,
+  // and measuring at normal weight makes the input/background/selection box
+  // too narrow — the input then scrolls horizontally and the text appears
+  // shifted sideways.
   let measureCanvas: HTMLCanvasElement | null = null;
-  const measureTextWidth = (text: string, fontSize: number): number => {
+  const measureTextWidth = (text: string, fontSize: number, style?: TextStyle): number => {
+    if (!measureCanvas) measureCanvas = document.createElement('canvas');
+    const ctx = measureCanvas.getContext('2d')!;
+    const italic = style?.italic ? 'italic ' : '';
+    const bold   = style?.bold   ? 'bold '   : '';
+    ctx.font = `${italic}${bold}${fontSize}px sans-serif`;
+    return ctx.measureText(text).width;
+  };
+
+  // Real font metrics for `${fontSize}px sans-serif`, measured via canvas so
+  // the SVG <text> (display mode) and the HTML <input> (edit mode) can share
+  // the exact same baseline position and background box.
+  const fontMetrics = (fontSize: number) => {
     if (!measureCanvas) measureCanvas = document.createElement('canvas');
     const ctx = measureCanvas.getContext('2d')!;
     ctx.font = `${fontSize}px sans-serif`;
-    return ctx.measureText(text).width;
+    const m = ctx.measureText('Mg');
+    return {
+      ascent:  m.fontBoundingBoxAscent  ?? fontSize * 0.9,
+      descent: m.fontBoundingBoxDescent ?? fontSize * 0.25,
+    };
+  };
+
+  // Distance from the top of the text box (height = fontSize * 1.2, the
+  // input's height) down to the text baseline. Browsers vertically centre a
+  // single line of input text in the content box, so the baseline sits at
+  // (boxH - (ascent + descent)) / 2 + ascent from the top. Using this for
+  // BOTH the input position and the display-mode background/selection box
+  // keeps the text from shifting between editing and saved states.
+  const baselineOffset = (fontSize: number) => {
+    const { ascent, descent } = fontMetrics(fontSize);
+    return (fontSize * 1.2 - (ascent + descent)) / 2 + ascent;
+  };
+
+  // Greedy word-wrap using the same canvas measurement as everything else,
+  // mirroring the textarea's `pre-wrap` + `break-word` behaviour: break at
+  // spaces, keep manual newlines, and break words longer than the width at
+  // character level. Width of Infinity = no wrapping (auto-width mode).
+  const wrapText = (
+    text: string,
+    width: number,
+    fontSize: number,
+    style?: TextStyle,
+  ): string[] => {
+    const fits = (s: string) => measureTextWidth(s, fontSize, style) <= width;
+    const breakWord = (word: string, lines: string[]): string => {
+      // Word alone exceeds the width — break at character level.
+      let chunk = '';
+      for (const ch of word) {
+        if (chunk && !fits(chunk + ch)) { lines.push(chunk); chunk = ch; }
+        else chunk += ch;
+      }
+      return chunk;
+    };
+    const lines: string[] = [];
+    for (const para of (text || '').split('\n')) {
+      let line = '';
+      for (const word of para.split(' ')) {
+        const candidate = line ? `${line} ${word}` : word;
+        if (fits(candidate)) line = candidate;
+        else if (!line) line = breakWord(word, lines);
+        else {
+          lines.push(line);
+          line = fits(word) ? word : breakWord(word, lines);
+        }
+      }
+      lines.push(line);
+    }
+    return lines.length ? lines : [''];
+  };
+
+  // User-set wrap width (image space). Undefined = auto: the box hugs the
+  // text on a single line (legacy behaviour) until a resize handle is dragged.
+  const boxWidthOf = (selector: ToolShape): number | undefined => {
+    const w = (selector.geometry as any)?.boxWidth;
+    return typeof w === 'number' && w > 0 ? w : undefined;
   };
 
   // Convert client (screen) coordinates to image-pixel coordinates
@@ -238,13 +326,22 @@
   const svgFontSize = (style: TextStyle) =>
     (style.fontSize || DEFAULT_TEXT_STYLE.fontSize) / Math.max(viewportScale, 0.001);
 
-  // Screen position of the text baseline-left for the HTML input overlay
-  const inputScreenPos = (selector: ToolShape, style: TextStyle) => {
-    const { x, y } = textPoint(selector);
+  // Screen position of the HTML input overlay, derived so the input's
+  // internal text baseline lands exactly on the SVG <text> baseline (y).
+  // NOT simply y - fontSize — that drifts by a few px because the browser
+  // centres input text using the font's own ascent/descent.
+  // `override` is the live drag/resize position (image space), so the input
+  // follows the box while it's being moved or resized from the left handle.
+  const inputScreenPos = (
+    selector: ToolShape,
+    style: TextStyle,
+    override?: { x: number; y: number },
+  ) => {
+    const { x, y } = override ?? textPoint(selector);
     const fs = style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
     return {
       left: x * viewportScale,
-      top:  y * viewportScale - fs,
+      top:  y * viewportScale - baselineOffset(fs),
     };
   };
 
@@ -305,22 +402,23 @@
 
       const bodies = [{ type: 'TextualBody', value: committingText, purpose: 'commenting' }];
 
-      // Measure exact text width via canvas (matches old TextTool behaviour)
       const fsImage = (editingStyle.fontSize || DEFAULT_TEXT_STYLE.fontSize) / Math.max(viewportScale, 0.001);
-      const textW = measureTextWidth(committingText || 'Type...', fsImage);
       const anchorGapImg = 8 / Math.max(viewportScale, 0.001);
       const oldG = annotation.target.selector.geometry as any;
-      // Derive the text anchor (baseline-left) from the geometry. New-format
-      // annotations store it in anchorX/anchorY; old-format used x/y directly.
+      const boxW = boxWidthOf(annotation.target.selector as ToolShape);
+      const lines = wrapText(committingText || 'Type...', boxW ?? Infinity, fsImage, editingStyle);
+      const textW = boxW
+        ?? Math.max(...lines.map(l => measureTextWidth(l, fsImage, editingStyle)));
       const anchor = textPoint(annotation.target.selector as ToolShape);
       const minX = anchor.x - anchorGapImg;
-      const minY = anchor.y - fsImage;
+      const minY = anchor.y - baselineOffset(fsImage);
       const maxX = anchor.x + textW + anchorGapImg;
-      const maxY = anchor.y + fsImage * 0.2;
+      const maxY = minY + fsImage * 1.2 * lines.length;
       const newGeometry = {
         bounds: { minX, minY, maxX, maxY },
         x: minX, y: minY, w: maxX - minX, h: maxY - minY,
         anchorX: anchor.x, anchorY: anchor.y,
+        ...(boxW ? { boxWidth: boxW } : {}),
       };
 
       anno.updateAnnotation({
@@ -434,9 +532,68 @@
   const handleTextMouseDown = (e: MouseEvent, id: string, pt: { x: number; y: number }) => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    // Keep the editing input focused during the drag — without this the
+    // mousedown blurs the input, which commits the edit and tears down the
+    // selection box mid-interaction.
+    e.preventDefault();
     const imgPos = clientToImage(e.clientX, e.clientY);
     dragOffset = { x: imgPos.x - pt.x, y: imgPos.y - pt.y };
     draggingTextId = id;
+  };
+
+  // ── Resize via the left/right anchor circles ───────────────────────────────
+
+  const handleResizeMouseDown = (
+    e: MouseEvent,
+    id: string,
+    side: 'left' | 'right',
+    pt: { x: number; y: number },
+    boxW: number,
+  ) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault(); // keep the input focused (blur would commit the edit)
+    resizeState = {
+      id,
+      side,
+      leftX: pt.x,
+      rightX: pt.x + boxW,
+      anchorY: pt.y,
+    };
+    resizeLiveW = boxW;
+  };
+
+  // Persist a resize: the new wrap width and (for a left-handle drag) the
+  // shifted anchor, in a single annotation update. Font size is untouched.
+  const persistResize = (id: string, boxWidth: number, pos?: { x: number; y: number }) => {
+    const annotation = allAnnotations.find(a => a.id === id) as any;
+    if (!annotation) return;
+    const selector = annotation.target.selector as ToolShape;
+    const oldG = selector.geometry as any;
+    let geometry = { ...oldG, boxWidth };
+    if (pos) {
+      const oldAnchor = textPoint(selector);
+      const dx = pos.x - oldAnchor.x;
+      const dy = pos.y - oldAnchor.y;
+      geometry = {
+        ...geometry,
+        x: oldG.x + dx, y: oldG.y + dy,
+        anchorX: pos.x, anchorY: pos.y,
+        bounds: {
+          minX: (oldG.bounds?.minX ?? oldG.x) + dx,
+          minY: (oldG.bounds?.minY ?? oldG.y) + dy,
+          maxX: (oldG.bounds?.maxX ?? oldG.x) + dx,
+          maxY: (oldG.bounds?.maxY ?? oldG.y) + dy,
+        },
+      };
+    }
+    anno.updateAnnotation({
+      ...annotation,
+      target: {
+        ...annotation.target,
+        selector: { ...selector, geometry },
+      },
+    });
   };
 
   const handleWindowMouseMove = (e: MouseEvent) => {
@@ -446,6 +603,28 @@
       const { x, y } = clientToImage(e.clientX, e.clientY);
       const next = getViewBoxAtPoint(viewBoxes, x, y)?.viewBoxId ?? null;
       if (next !== activeViewBoxId) activeViewBoxId = next;
+    }
+
+    // Handle-resize drag: change the wrap width, keeping the opposite edge
+    // fixed. Font size NEVER changes — text re-wraps to the new width.
+    if (resizeState) {
+      const { x } = clientToImage(e.clientX, e.clientY);
+      const anchorGap = 8 / Math.max(viewportScale, 0.001);
+      const fsImage = (editingStyle.fontSize || DEFAULT_TEXT_STYLE.fontSize)
+        / Math.max(viewportScale, 0.001);
+      const rawW = resizeState.side === 'right'
+        ? x - anchorGap - resizeState.leftX
+        : resizeState.rightX - x - anchorGap;
+      // Never narrower than ~1.5em, so at least short words still fit.
+      const newW = Math.max(rawW, fsImage * 1.5);
+      resizeLiveW = newW;
+      if (resizeState.side === 'left') {
+        // Keep the RIGHT edge fixed: shift the anchor by the width change.
+        draggingPos = {
+          [resizeState.id]: { x: resizeState.rightX - newW, y: resizeState.anchorY },
+        };
+      }
+      return;
     }
 
     if (!draggingTextId || !dragOffset) return;
@@ -459,6 +638,17 @@
   };
 
   const handleWindowMouseUp = () => {
+    if (resizeState) {
+      const { id, side } = resizeState;
+      if (resizeLiveW != null)
+        persistResize(id, resizeLiveW, side === 'left' ? draggingPos[id] : undefined);
+      resizeState = null;
+      resizeLiveW = null;
+      draggingPos = {};
+      inputEl?.focus();
+      return;
+    }
+
     if (!draggingTextId) return;
     const pos = draggingPos[draggingTextId];
     if (pos) {
@@ -501,7 +691,9 @@
 
   const onInputKeyDown = (evt: KeyboardEvent) => {
     evt.stopPropagation();
-    if (evt.key === 'Enter' || evt.key === 'Escape') {
+    // Enter commits (Shift+Enter inserts a manual line break in the textarea).
+    if (evt.key === 'Escape' || (evt.key === 'Enter' && !evt.shiftKey)) {
+      evt.preventDefault();
       commitEdit();
       anno.cancelSelected();
     }
@@ -515,11 +707,12 @@
     style.underline ? 'text-decoration:underline' : '',
   ].filter(Boolean).join(';');
 
-  const inputStyle = (style: TextStyle, pos: { left: number; top: number }, width: number) => [
+  const inputStyle = (style: TextStyle, pos: { left: number; top: number }, width: number, lineCount = 1) => [
     `left:${pos.left}px`,
     `top:${pos.top}px`,
     `width:${width}px`,
-    `height:${(style.fontSize || DEFAULT_TEXT_STYLE.fontSize) * 1.2}px`,
+    `height:${(style.fontSize || DEFAULT_TEXT_STYLE.fontSize) * 1.2 * lineCount}px`,
+    `line-height:${(style.fontSize || DEFAULT_TEXT_STYLE.fontSize) * 1.2}px`,
     `font-size:${style.fontSize || DEFAULT_TEXT_STYLE.fontSize}px`,
     style.bold      ? 'font-weight:bold'         : '',
     style.italic    ? 'font-style:italic'         : '',
@@ -668,25 +861,7 @@
   preserveAspectRatio="xMinYMin meet"
   style="pointer-events:none;">
 
-  <!-- Per-annotation background filters (must be in <defs> at SVG top) -->
-  <defs>
-    {#each textAnnotations as { id, selector }, i (id)}
-      {#if selector && editingId !== id}
-        {@const style = getStyle(selector)}
-        {#if style.bgColor && style.bgColor !== 'transparent'}
-          <filter id="a9s-tb-{i}" x="0" y="-5%" width="100%" height="130%">
-            <feFlood flood-color={style.bgColor} result="bg"/>
-            <feMerge>
-              <feMergeNode in="bg"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        {/if}
-      {/if}
-    {/each}
-  </defs>
-
-  {#each textAnnotations as { id, selector, text }, i (id)}
+  {#each textAnnotations as { id, selector, text } (id)}
     {#if selector}
       {@const rawPt   = textPoint(selector)}
       {@const pt      = draggingPos[id] ?? rawPt}
@@ -695,8 +870,18 @@
       {@const hasBg   = !!(style.bgColor && style.bgColor !== 'transparent')}
       {@const displayText  = localTexts[id] ?? text ?? ''}
 
-      <!-- Text body (hidden while editing — input takes over) -->
+      <!-- Text body (hidden while editing — textarea takes over). Text wraps
+           at the user-set box width (boxWidth); without one it stays on a
+           single auto-width line (legacy behaviour). -->
       {#if editingId !== id}
+        {@const boxWidth = boxWidthOf(selector)}
+        {@const lineH = fs * 1.2}
+        {@const lines = wrapText(displayText, boxWidth ?? Infinity, fs, style)}
+        {@const dispW = boxWidth
+          ?? Math.max(...lines.map(l => measureTextWidth(l, fs, style))) + 2 / Math.max(viewportScale, 0.001)}
+        {@const dispH = lineH * lines.length}
+        {@const padX  = 8 / Math.max(viewportScale, 0.001)}
+        {@const padY  = 4 / Math.max(viewportScale, 0.001)}
         <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
         <g
           data-annotation-type="TEXT"
@@ -705,66 +890,92 @@
           on:mousedown={(e) => handleTextMouseDown(e, id, rawPt)}
           on:click={() => startEditing(id)}>
 
-          <!-- Background highlight via filter (hugs text, no full-width stretch) -->
+          {#if hasBg}
+            <rect
+              x={pt.x}
+              y={pt.y - baselineOffset(fs)}
+              width={dispW}
+              height={dispH}
+              fill={style.bgColor} />
+          {/if}
+          <!-- Enlarged hit area: padded around the text (same geometry as the
+               editing selection box) so the annotation is clickable well
+               beyond the glyphs. Invisible until hovered, when it shows an
+               outline making the interactive region obvious. -->
+          <rect
+            class="a9s-tools-text-hit"
+            x={pt.x - padX}
+            y={pt.y - baselineOffset(fs) - padY}
+            width={dispW + padX * 2}
+            height={dispH + padY * 2}
+            rx={2 / Math.max(viewportScale, 0.001)}
+            vector-effect="non-scaling-stroke" />
           <text
-            x={pt.x}
-            y={pt.y}
             font-size={fs}
             font-family="sans-serif"
-            style={svgTextStyle(style)}
-            filter={hasBg ? `url(#a9s-tb-${i})` : null}>
-            {displayText}
+            style={svgTextStyle(style)}>
+            {#each lines as line, li}
+              <tspan x={pt.x} y={pt.y + li * lineH}>{line}</tspan>
+            {/each}
           </text>
         </g>
       {/if}
 
-      <!-- Selection / editing box — shown when editing OR when Annotorious has
-           this annotation selected.  Matches old React TextTool exactly:
-           dashed #888 rect + #ff00ba circles at left/right centre edges.       -->
+      <!-- Selection / editing box: blue border + faint fill over the whole
+           draggable area, with #ff00ba resize circles at the left/right
+           centre edges. The handles change the WRAP WIDTH only — font size
+           is never affected. resizeLiveW tracks the width during the drag. -->
       {#if editingId === id}
-        {@const boxText    = editingId === id ? editingText : displayText}
-        {@const textW      = measureTextWidth(boxText || 'Type...', fs)}
-        {@const textH      = fs * 1.2}
-        {@const anchorR    = 5  / Math.max(viewportScale, 0.001)}
+        {@const efs        = svgFontSize(editingStyle)}
+        {@const eBoxWidth  = (resizeState?.id === id ? resizeLiveW : null) ?? boxWidthOf(selector)}
+        {@const eLines     = wrapText(editingText || 'Type...', eBoxWidth ?? Infinity, efs, editingStyle)}
+        {@const textW      = eBoxWidth
+          ?? Math.max(...eLines.map(l => measureTextWidth(l, efs, editingStyle))) + 2 / Math.max(viewportScale, 0.001)}
+        {@const textH      = efs * 1.2 * eLines.length}
+        {@const anchorR    = 6  / Math.max(viewportScale, 0.001)}
         {@const anchorGap  = 8  / Math.max(viewportScale, 0.001)}
+        {@const padY       = 4  / Math.max(viewportScale, 0.001)}
         {@const boxX       = pt.x - anchorGap}
-        {@const boxY       = pt.y - fs}
+        {@const boxY       = pt.y - baselineOffset(efs) - padY}
         {@const boxW       = textW + anchorGap * 2}
-        {@const centerY    = boxY + textH / 2}
+        {@const boxH       = textH + padY * 2}
+        {@const centerY    = boxY + boxH / 2}
         <g style="pointer-events:none;">
-          <!-- Dashed selection border -->
+          <!-- Selection border + faint fill: marks the full interactive area -->
           <rect
             x={boxX} y={boxY}
-            width={boxW} height={textH}
-            fill="none"
-            stroke="#888888"
-            stroke-width="1"
-            stroke-dasharray="3 3"
+            width={boxW} height={boxH}
+            fill="rgba(59, 130, 246, 0.08)"
+            stroke="#3b82f6"
+            stroke-width="1.5"
+            stroke-dasharray="5 3"
             vector-effect="non-scaling-stroke" />
           <!-- Invisible drag area covering the whole box -->
           <!-- svelte-ignore a11y-no-static-element-interactions -->
           <rect
             x={boxX} y={boxY}
-            width={boxW} height={textH}
+            width={boxW} height={boxH}
             fill="transparent"
             style="pointer-events:fill; cursor:move;"
             on:mousedown={(e) => handleTextMouseDown(e, id, pt)} />
-          <!-- Left anchor circle -->
+          <!-- Left resize handle -->
           <!-- svelte-ignore a11y-no-static-element-interactions -->
           <circle
+            class="a9s-tools-text-anchor"
             cx={boxX} cy={centerY} r={anchorR}
-            fill="#ff00ba" stroke="white" stroke-width="1"
+            fill="#ff00ba" stroke="white" stroke-width="1.5"
             vector-effect="non-scaling-stroke"
             style="pointer-events:auto; cursor:ew-resize;"
-            on:mousedown={(e) => handleTextMouseDown(e, id, pt)} />
-          <!-- Right anchor circle -->
+            on:mousedown={(e) => handleResizeMouseDown(e, id, 'left', pt, textW)} />
+          <!-- Right resize handle -->
           <!-- svelte-ignore a11y-no-static-element-interactions -->
           <circle
+            class="a9s-tools-text-anchor"
             cx={boxX + boxW} cy={centerY} r={anchorR}
-            fill="#ff00ba" stroke="white" stroke-width="1"
+            fill="#ff00ba" stroke="white" stroke-width="1.5"
             vector-effect="non-scaling-stroke"
             style="pointer-events:auto; cursor:ew-resize;"
-            on:mousedown={(e) => handleTextMouseDown(e, id, pt)} />
+            on:mousedown={(e) => handleResizeMouseDown(e, id, 'right', pt, textW)} />
         </g>
       {/if}
     {/if}
@@ -789,9 +1000,15 @@
 {#each textAnnotations as { id, selector } (id)}
   {#if selector && editingId === id}
     {@const style  = editingStyle}
-    {@const pos    = inputScreenPos(selector, style)}
+    {@const pos    = inputScreenPos(selector, style, draggingPos[id])}
     {@const fs     = style.fontSize || DEFAULT_TEXT_STYLE.fontSize}
-    {@const inputW = measureTextWidth(editingText || 'Type...', fs) + 2}
+    {@const boxWidth = (resizeState?.id === id ? resizeLiveW : null) ?? boxWidthOf(selector)}
+    {@const inputW = boxWidth != null
+      ? boxWidth * viewportScale
+      : Math.max(...(editingText || 'Type...').split('\n').map(l => measureTextWidth(l, fs, style))) + 2}
+    {@const lineCount = boxWidth != null
+      ? wrapText(editingText || 'Type...', inputW, fs, style).length
+      : (editingText.split('\n').length || 1)}
 
     <TextToolbar
       style={style}
@@ -800,13 +1017,15 @@
       on:change={(e) => applyStyleChange(id, e.detail)}
       on:delete={() => deleteAnnotation(id)} />
 
-    <input
+    <textarea
       bind:this={inputEl}
-      type="text"
       bind:value={editingText}
       class="a9s-tools-text-input"
-      style={inputStyle(style, pos, inputW)}
+      style={inputStyle(style, pos, inputW, lineCount)}
       placeholder="Type..."
+      wrap="soft"
+      rows="1"
+      spellcheck="false"
       on:keydown={onInputKeyDown}
       on:blur={commitEdit} />
   {/if}
@@ -829,10 +1048,33 @@
     outline: none;
     background: transparent;
     font-family: sans-serif;
-    color: inherit;
+    color: #000;
     pointer-events: all;
     z-index: 1000;
     box-sizing: border-box;
+    resize: none;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+
+  /* ── Text annotation hit area / handles ─────────────────────────────── */
+
+  .a9s-tools-text-hit {
+    fill: transparent;
+    stroke: transparent;
+    stroke-width: 1.5;
+    stroke-dasharray: 5 3;
+    transition: stroke 0.12s ease, fill 0.12s ease;
+  }
+
+  g[data-annotation-type='TEXT']:hover .a9s-tools-text-hit {
+    stroke: rgba(59, 130, 246, 0.8);
+    fill: rgba(59, 130, 246, 0.06);
+  }
+
+  .a9s-tools-text-anchor:hover {
+    stroke-width: 2.5;
   }
 
   /* ── viewBox region outlines ─────────────────────────────────────────── */
