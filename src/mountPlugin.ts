@@ -9,6 +9,8 @@ import { LineEditor, RubberbandLine } from './line';
 import { mountOverlay } from './overlay';
 import { RubberbandPath, PathEditor } from './path';
 import { RectangleEditor, RubberbandText } from './text';
+import type { DefaultShapeStyle } from './shape/shapeStyle';
+import { patchHitArea } from './hitArea';
 
 export const mountPlugin = <
   I extends Annotation = ImageAnnotation,
@@ -44,6 +46,11 @@ export const mountPlugin = <
   // without resorting to DOM side-channels.
   const overlay = mountOverlay(anno);
 
+  // Replace the stock click/hover hit test with a buffered, screen-scale-
+  // aware one, so every shape type gets a constant on-screen clickable
+  // margin at any zoom level. See ./hitArea.ts for the full rationale.
+  patchHitArea(anno);
+
   return {
     setStrokeColor(color: string) {
       overlay?.setStrokeColor(color);
@@ -63,6 +70,18 @@ export const mountPlugin = <
     // docs/distance-viewbox.md.
     setPixelsPerMm(ppmm: number | null) {
       overlay?.setPixelsPerMm(ppmm);
+    },
+    // Host app's global drawing defaults (stroke/fill), shown by the shape
+    // toolbar for annotations that have no per-annotation overrides.
+    setDefaultStyle(style: DefaultShapeStyle) {
+      overlay?.setDefaultStyle(style);
+    },
+    // Ids of annotations the host has hidden (per-annotation eye toggle or a
+    // hidden layer). Arrows, distance labels and text are painted by the
+    // overlay, so the host's style-based hiding cannot reach them — feed the
+    // hidden set here whenever visibility changes.
+    setHiddenIds(ids: string[]) {
+      overlay?.setHiddenIds(ids);
     },
   };
 }
