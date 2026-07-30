@@ -1019,6 +1019,7 @@
 
     <textarea
       bind:this={inputEl}
+      data-testid="markup-text-input"
       bind:value={editingText}
       class="a9s-tools-text-input"
       style={inputStyle(style, pos, inputW, lineCount)}
